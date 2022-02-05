@@ -165,7 +165,7 @@ fn write_str_exact(stream: &mut dyn Write, s: &str, size: usize) -> Result<()> {
 
 pub trait Peer {
 	fn send(&mut self, message: Message) -> Result<()>;
-	fn receive(&mut self) -> Result<Option<Message>>;
+	fn receive(&mut self) -> Result<Message>;
 }
 
 impl Peer for TcpStream {
@@ -174,15 +174,17 @@ impl Peer for TcpStream {
 		m.serialize(self)
 	}
 
-	fn receive(&mut self) -> Result<Option<Message>> {
+	fn receive(&mut self) -> Result<Message> {
 		match self.peek(&mut [0]) {
 			Ok(0) => {
-				return Ok(None);
+				// AFAIK this should not happen because the `recv` syscall should block until data is available.
+				// If the socket connection is closed, `peek` will result in an error, not a zero result.
+				unreachable!();
 			},
 			Ok(_) => {
 				let m = Message::deserialize(self)?;
 				println!("RECEIVED:\n{}\n", m);
-				return Ok(Some(m))
+				return Ok(m)
 			},
 			Err(e) => {
 				return Err(Err::NetworkError(e.to_string()));

@@ -1,12 +1,19 @@
 #![feature(try_blocks)]
 
-use std::net::{TcpStream};
+use std::{
+	collections::HashMap,
+	net::{TcpStream},
+	sync::mpsc::{Sender, Receiver},
+	thread,
+};
 
 mod err;
 mod common;
 mod sha256;
 mod json;
 mod network;
+
+use sha256::Sha256;
 
 use network::{
 	Peer,
@@ -15,6 +22,8 @@ use network::{
 		Payload,
 		Version,
 		Ping,
+		Inv,
+		InvType,
 	}
 };
 
@@ -26,11 +35,31 @@ struct Config {
 	addrv2: bool,
 }
 
+struct Mempool {
+	ids: Vec<Sha256>,
+	txs: HashMap<Sha256, ()>,
+}
+
+impl Mempool {
+	fn new() -> Self {
+		Mempool {
+			ids: Vec::new(),
+			txs: HashMap::new(),
+		}
+	}
+
+	fn add_tx_id(&mut self, id: Sha256) {
+		println!("add tx id to mempool: {}", id);
+		self.ids.push(id);
+	}
+}
+
 struct Node {
 	peer: TcpStream,
 	config: Config,
 	peer_info: Option<Version>,
 	handshake_complete: bool,
+	mempool: Mempool,
 }
 
 impl Node {
@@ -43,6 +72,7 @@ impl Node {
 			config: Config::default(),
 			peer_info: None,
 			handshake_complete: false,
+			mempool: Mempool::new(),
 		})
 	}
 
@@ -53,6 +83,7 @@ impl Node {
 			Payload::WTxIdRelay => self.handle_wtxidrelay_message(),
 			Payload::SendAddrV2 => self.handle_sendaddrv2_message(),
 			Payload::Ping(ping) => self.handle_ping_message(ping),
+			Payload::Inv(inv) => self.handle_inv_message(inv),
 			p => {
 				println!("{}: no response implemented\n", p.name());
 				Ok(())
@@ -99,11 +130,29 @@ impl Node {
 		Ok(())
 	}
 
-	fn receive_messages(&mut self) -> Result<()> {
-		while let Some(response) = self.peer.receive()? {
-			self.handle_message(response)?;
+	fn handle_inv_message(&mut self, inv: &Inv) -> Result<()> {
+		for item in inv.items().iter() {
+			match item.object_type {
+				InvType::Tx => self.mempool.add_tx_id(item.hash),
+				// InvType::Block => {},
+				// InvType::FilteredBlock => {},
+				// InvType::CmpctBlock => {},
+				// InvType::WitnessTx => {},
+				// InvType::WitnessBlock => {},
+				// InvType::FilteredWitnessBlock => {},
+				InvType::Error => {},
+				_ => unimplemented!("inv object type: {}", item.object_type),
+			}
 		}
+		
 		Ok(())
+	}
+
+	fn receive_messages(&mut self) -> Result<()> {
+		loop {
+			let message = self.peer.receive()?;
+			self.handle_message(message)?;
+		}
 	}
 
 	fn do_handshake(&mut self) -> Result<()> {

@@ -23,7 +23,7 @@ use super::{
 
 #[repr(u32)]
 #[derive(Clone, Copy)]
-enum InvType {
+pub enum InvType {
     Error = 0x00000000,
     Tx = 0x00000001,
     Block = 0x00000002,
@@ -34,20 +34,35 @@ enum InvType {
     FilteredWitnessBlock = 0x40000003,
 }
 
-impl TryFrom<u32> for InvType {
-    type Error = Err;
+// impl TryFrom<u32> for InvType {
+//     type Error = Err;
 
-    fn try_from(v: u32) -> Result<Self> {
+//     fn try_from(v: u32) -> Result<Self> {
+//         match v {
+//             x if x == InvType::Error as u32 => Ok(InvType::Error),
+//             x if x == InvType::Tx as u32 => Ok(InvType::Tx),
+//             x if x == InvType::Block as u32 => Ok(InvType::Block),
+//             x if x == InvType::FilteredBlock as u32 => Ok(InvType::FilteredBlock),
+//             x if x == InvType::CmpctBlock as u32 => Ok(InvType::CmpctBlock),
+//             x if x == InvType::WitnessTx as u32 => Ok(InvType::WitnessTx),
+//             x if x == InvType::WitnessBlock as u32 => Ok(InvType::WitnessBlock),
+//             x if x == InvType::FilteredWitnessBlock as u32 => Ok(InvType::FilteredWitnessBlock),
+//             _ => Err(Err::NetworkError("invalid inv object type".to_owned())),
+//         }
+//     }
+// }
+
+impl From<u32> for InvType {
+    fn from(v: u32) -> Self {
         match v {
-            x if x == InvType::Error as u32 => Ok(InvType::Error),
-            x if x == InvType::Tx as u32 => Ok(InvType::Tx),
-            x if x == InvType::Block as u32 => Ok(InvType::Block),
-            x if x == InvType::FilteredBlock as u32 => Ok(InvType::FilteredBlock),
-            x if x == InvType::CmpctBlock as u32 => Ok(InvType::CmpctBlock),
-            x if x == InvType::WitnessTx as u32 => Ok(InvType::WitnessTx),
-            x if x == InvType::WitnessBlock as u32 => Ok(InvType::WitnessBlock),
-            x if x == InvType::FilteredWitnessBlock as u32 => Ok(InvType::FilteredWitnessBlock),
-            _ => Err(Err::NetworkError("invalid inv object type".to_owned())),
+            x if x == InvType::Tx as u32 => InvType::Tx,
+            x if x == InvType::Block as u32 => InvType::Block,
+            x if x == InvType::FilteredBlock as u32 => InvType::FilteredBlock,
+            x if x == InvType::CmpctBlock as u32 => InvType::CmpctBlock,
+            x if x == InvType::WitnessTx as u32 => InvType::WitnessTx,
+            x if x == InvType::WitnessBlock as u32 => InvType::WitnessBlock,
+            x if x == InvType::FilteredWitnessBlock as u32 => InvType::FilteredWitnessBlock,
+            _ => InvType::Error,
         }
     }
 }
@@ -68,9 +83,9 @@ impl fmt::Display for InvType {
 }
 
 #[derive(Clone)]
-struct InvItem {
-    object_type: InvType,
-    hash: Sha256,
+pub struct InvItem {
+    pub object_type: InvType,
+    pub hash: Sha256,
 }
 
 impl InvItem {
@@ -84,7 +99,7 @@ impl InvItem {
 
 impl Deserialize for InvItem {
     fn deserialize(stream: &mut dyn Read) -> Result<Self> {
-        let object_type = InvType::try_from(read_u32(stream)?)?;
+        let object_type = InvType::from(read_u32(stream)?);
         let mut hash_buf = [0; 32];
         read_buf_exact(stream, &mut hash_buf)?;
         let hash = Sha256::from(hash_buf);
@@ -115,6 +130,10 @@ impl Inv {
 	// 		inv: Vec::new(),
 	// 	}
 	// }
+
+    pub fn items(&self) -> &[InvItem] {
+        &self.inv
+    }
 
 	pub fn into_json(&self) -> JsonValue {
         JsonValue::Array(self.inv.iter().map(|e| e.into_json()).collect())
