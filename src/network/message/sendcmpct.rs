@@ -7,15 +7,16 @@ use crate::{
 	json::JsonValue,
 };
 
+use crate::common::{
+	read_bool,
+	read_u64,
+	write_bool,
+	write_u64,
+};
+
 use super::{
 	Deserialize,
 	Serialize,
-	super::{
-		read_bool,
-		read_u64,
-		write_bool,
-		write_u64,
-	}
 };
 
 #[derive(Clone)]

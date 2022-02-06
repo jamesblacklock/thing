@@ -9,16 +9,17 @@ use crate::{
     sha256::Sha256,
 };
 
+use crate::common::{
+	read_u32,
+    read_buf_exact,
+    write_u32,
+    write_buf_exact,
+};
+
 use super::{
 	Deserialize,
 	Serialize,
     VarInt,
-	super::{
-		read_u32,
-        read_buf_exact,
-		write_u32,
-        write_buf_exact,
-	}
 };
 
 #[repr(u32)]

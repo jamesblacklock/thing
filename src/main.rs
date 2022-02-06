@@ -1,7 +1,7 @@
 #![feature(try_blocks)]
 
 use std::{
-	collections::HashMap,
+	collections::{HashMap, HashSet},
 	net::{TcpStream},
 	sync::mpsc,
 	sync::mpsc::{Receiver},
@@ -13,6 +13,7 @@ mod common;
 mod sha256;
 mod json;
 mod network;
+mod script;
 
 use sha256::Sha256;
 
@@ -26,10 +27,13 @@ use network::{
 		Inv,
 		InvType,
 		GetData,
+		Tx,
 	}
 };
 
 use err::*;
+use script::*;
+use json::*;
 
 #[derive(Default)]
 struct Config {
@@ -38,30 +42,30 @@ struct Config {
 }
 
 struct Mempool {
+	pending: HashSet<Sha256>,
 	txs: HashMap<Sha256, Tx>,
 }
-
-#[derive(Debug)]
-struct Tx {}
 
 impl Mempool {
 	fn new() -> Self {
 		Mempool {
+			pending: HashSet::new(),
 			txs: HashMap::new(),
 		}
 	}
 	
 	fn add_tx(&mut self, id: Sha256, tx: Tx) {
-		// if self.txs.contains_key(&id) {
-		// 	println!("tx already in mempool: {}", id);
-		// } else {
-		// 	println!("add tx to mempool: {}", id);
-		// 	self.txs.insert(id, tx);
-		// }
+		self.pending.remove(&id);
+		if self.txs.contains_key(&id) {
+			println!("tx already in mempool: {}", id);
+		} else {
+			println!("add tx to mempool: {}", id);
+			self.txs.insert(id, tx);
+		}
 	}
 
 	fn contains(&self, id: Sha256) -> bool {
-		self.txs.contains_key(&id)
+		self.pending.contains(&id) || self.txs.contains_key(&id)
 	}
 }
 
@@ -137,13 +141,14 @@ impl Node {
 	}
 
 	fn handle_message(&mut self, peer_index: usize, m: Message) -> Result<()> {
-		match m.payload() {
+		match m.take_payload() {
 			Payload::Version(payload) => self.handle_version_message(peer_index, payload),
-			Payload::Verack => self.handle_verack_message(peer_index, ),
-			Payload::WTxIdRelay => self.handle_wtxidrelay_message(peer_index, ),
-			Payload::SendAddrV2 => self.handle_sendaddrv2_message(peer_index, ),
+			Payload::Verack => self.handle_verack_message(peer_index),
+			Payload::WTxIdRelay => self.handle_wtxidrelay_message(peer_index),
+			Payload::SendAddrV2 => self.handle_sendaddrv2_message(peer_index),
 			Payload::Ping(ping) => self.handle_ping_message(peer_index, ping),
 			Payload::Inv(inv) => self.handle_inv_message(peer_index, inv),
+			Payload::Tx(id, tx) => self.handle_tx_message(peer_index, id, tx),
 			p => {
 				println!("peer {}: {}: no response implemented\n", peer_index, p.name());
 				Ok(())
@@ -151,17 +156,17 @@ impl Node {
 		}
 	}
 
-	fn handle_version_message(&mut self, peer_index: usize, payload: &Version) -> Result<()> {
+	fn handle_version_message(&mut self, peer_index: usize, payload: Version) -> Result<()> {
 		if let Some(peer) = self.peers.get_mut(&peer_index) {
 			if !peer.handshake_complete && peer.info.is_none() {
-				peer.info = Some(payload.clone());
+				peer.info = Some(payload);
 				peer.writer.send(Message::verack())?;
 			}
 		}
 		Ok(())
 	}
 	
-	fn handle_ping_message(&mut self, peer_index: usize, payload: &Ping) -> Result<()> {
+	fn handle_ping_message(&mut self, peer_index: usize, payload: Ping) -> Result<()> {
 		if let Some(peer) = self.peers.get_mut(&peer_index) {
 			peer.writer.send(Message::pong(payload.nonce()))?;
 		}
@@ -200,7 +205,7 @@ impl Node {
 		Ok(())
 	}
 
-	fn handle_inv_message(&mut self, peer_index: usize, inv: &Inv) -> Result<()> {
+	fn handle_inv_message(&mut self, peer_index: usize, inv: Inv) -> Result<()> {
 		let mut items = Vec::new();
 		for item in inv.items().iter() {
 			match item.object_type {
@@ -227,6 +232,11 @@ impl Node {
 
 		Ok(())
 	}
+
+	fn handle_tx_message(&mut self, _peer_index: usize, id: Sha256, tx: Tx) -> Result<()> {
+		self.mempool.add_tx(id, tx);
+		Ok(())
+	}
 	
 	pub fn run(mut self) -> Result<()> {
 		for (i, peer) in self.peers.iter_mut() {
@@ -250,7 +260,10 @@ impl Node {
 							break 'outer;
 						},
 						ApplicationMessage::ShowMempool => {
-							println!("{:?}", self.mempool.txs);
+							println!("{}", JsonValue::object(
+								self.mempool.txs.iter().map(|(id, tx)| {
+									(format!("{}", id), tx.into_json())
+								})));
 						},
 					}
 				}

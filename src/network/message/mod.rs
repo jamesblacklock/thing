@@ -5,12 +5,11 @@ use std::fmt;
 use crate::{
     err::*,
     sha256::compute_double_sha256,
+    sha256::Sha256,
     json::JsonValue,
 };
 
-use super::{
-	Serialize,
-	Deserialize,
+use crate::common::{
 	read_u8,
 	read_u16,
 	read_u16_be,
@@ -27,6 +26,11 @@ use super::{
 	write_u64,
 	write_buf_exact,
 	write_str_exact,
+};
+
+use super::{
+	Serialize,
+	Deserialize,
 };
 
 mod version;
@@ -266,7 +270,7 @@ pub enum Payload {
 	NotFound,
 	GetBlocks,
 	GetHeaders,
-	Tx(Tx),
+	Tx(Sha256, Tx),
 	Block,
 	Headers,
 	GetAddr,
@@ -303,7 +307,7 @@ impl Payload {
 			Payload::NotFound => "notfound",
 			Payload::GetBlocks => "getblocks",
 			Payload::GetHeaders => "getheaders",
-			Payload::Tx(_) => "tx",
+			Payload::Tx(_, _) => "tx",
 			Payload::Block => "block",
 			Payload::Headers => "headers",
 			Payload::GetAddr => "getaddr",
@@ -332,7 +336,7 @@ impl Payload {
 			Payload::Addr(x) => x.into_json(),
 			Payload::Inv(x) => x.into_json(),
 			Payload::GetData(x) => x.into_json(),
-			Payload::Tx(x) => x.into_json(),
+			Payload::Tx(_, x) => x.into_json(),
 			Payload::Ping(x) => x.into_json(),
 			Payload::Pong(x) => x.into_json(),
 			Payload::FeeFilter(x) => x.into_json(),
@@ -349,7 +353,7 @@ impl Serialize for Payload {
 			Payload::Addr(x) => x.serialize(stream),
 			Payload::GetData(x) => x.serialize(stream),
 			Payload::Inv(x) => x.serialize(stream),
-			Payload::Tx(x) => x.serialize(stream),
+			Payload::Tx(_, x) => x.serialize(stream),
 			Payload::Ping(x) => x.serialize(stream),
 			Payload::Pong(x) => x.serialize(stream),
 			Payload::FeeFilter(x) => x.serialize(stream),
@@ -396,17 +400,24 @@ impl Message {
 	pub fn payload(&self) -> &Payload {
 		&self.payload
 	}
+
+	pub fn take_payload(self) -> Payload {
+		self.payload
+	}
 }
 
 impl fmt::Display for Message {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		let json = JsonValue::object([
+		let mut props = vec![
 			("network", JsonValue::string(format!("{}", self.network))),
 			("message", JsonValue::string(self.payload.name())),
-			("payload", self.payload.into_json()),
-		]);
-		
-		write!(f, "{}", json)
+		];
+		if let Payload::Tx(id, _) = self.payload {
+			props.push(("id", JsonValue::string(format!("{}", id))));
+		}
+		props.push(("payload", self.payload.into_json()));
+
+		write!(f, "{}", JsonValue::object(props))
 	}
 }
 
@@ -460,7 +471,7 @@ impl Deserialize for Message {
 			"notfound" => Payload::NotFound,
 			"getblocks" => Payload::GetBlocks,
 			"getheaders" => Payload::GetHeaders,
-			"tx" => Payload::Tx(Tx::deserialize(&mut &*payload_bytes)?),
+			"tx" => Payload::Tx(sha256, Tx::deserialize(&mut &*payload_bytes)?),
 			"block" => Payload::Block,
 			"headers" => Payload::Headers,
 			"getaddr" => Payload::GetAddr,

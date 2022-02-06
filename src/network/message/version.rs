@@ -9,23 +9,24 @@ use crate::{
 	common::now,
 };
 
+use crate::common::{
+	read_bool,
+	read_i32,
+	read_u32,
+	read_i64,
+	read_u64,
+	write_bool,
+	write_i32,
+	write_u32,
+	write_i64,
+	write_u64,
+};
+
 use super::{
 	ShortNetAddr,
 	VarStr,
 	Deserialize,
 	Serialize,
-	super::{
-		read_bool,
-		read_i32,
-		read_u32,
-		read_i64,
-		read_u64,
-		write_bool,
-		write_i32,
-		write_u32,
-		write_i64,
-		write_u64,
-	}
 };
 
 // mod Services {

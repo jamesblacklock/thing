@@ -1,4 +1,7 @@
-use std::fmt;
+use std::{
+    iter::IntoIterator,
+    fmt,
+};
 
 pub enum JsonValue {
     Null,
@@ -25,20 +28,12 @@ impl JsonValue {
     pub fn string<T: Into<String>>(s: T) -> JsonValue { JsonValue::String(s.into()) }
     pub fn number<T: IntoF64>(n: T) -> JsonValue { JsonValue::Number(n.into_f64()) }
     pub fn bool(b: bool) -> JsonValue { JsonValue::Bool(b) }
-    pub fn object<const N: usize>(a: [(&str, JsonValue); N]) -> JsonValue {
-        let mut vec = Vec::with_capacity(a.len());
-        for (k, v) in a {
-            vec.push((String::from(k), v));
-        }
-        JsonValue::Object(vec)
+    pub fn object<T: IntoIterator<Item = (U, JsonValue)>, U: Into<String>>(a: T) -> JsonValue {
+        JsonValue::Object(a.into_iter().map(|(k, v)| (k.into(), v)).collect())
     }
-    // pub fn array<const N: usize>(a: [JsonValue; N]) -> JsonValue {
-    //     let mut vec = Vec::with_capacity(a.len());
-    //     for v in a {
-    //         vec.push(v);
-    //     }
-    //     JsonValue::Array(vec)
-    // }
+    pub fn array<T: IntoIterator<Item = JsonValue>>(a: T) -> JsonValue {
+        JsonValue::Array(a.into_iter().collect())
+    }
 
     fn fmt(&self, f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
         match self {

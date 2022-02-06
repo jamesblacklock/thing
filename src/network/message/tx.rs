@@ -6,21 +6,23 @@ use crate::{
 	err::*,
 	json::JsonValue,
 	sha256::Sha256,
+	script::*,
+};
+
+use crate::common::{
+	read_u8,
+	read_u32,
+	read_u64,
+	read_buf_exact,
+	write_u8,
+	write_u32,
+	write_u64,
 };
 
 use super::{
 	Deserialize,
 	Serialize,
 	VarInt,
-	super::{
-		read_u8,
-		read_u32,
-		read_u64,
-		read_buf_exact,
-		write_u8,
-		write_u32,
-		write_u64,
-	}
 };
 
 #[derive(Clone, Copy)]
@@ -28,6 +30,16 @@ enum LockTime {
 	BlockNumber(u32),
 	Timestamp(u32),
 	None,
+}
+
+impl LockTime {
+	fn to_json(&self) -> JsonValue {
+		match *self {
+			LockTime::BlockNumber(n) => JsonValue::object([("block", JsonValue::number(n))]),
+			LockTime::Timestamp(n) => JsonValue::object([("timestamp", JsonValue::number(n))]),
+			LockTime::None => JsonValue::null(),
+		}
+	}
 }
 
 impl From<u32> for LockTime {
@@ -43,25 +55,69 @@ impl From<u32> for LockTime {
 struct Input {
 	tx_hash: Sha256,
 	index: u32,
-	unlock: Vec<u8>,
+	unlock: Script,
 	witness: Vec<Vec<u8>>,
 	sequence: u32,
 }
 
+impl Input {
+	fn into_json(&self) -> JsonValue {
+		JsonValue::object([
+			("tx_hash", JsonValue::string(format!("{}", self.tx_hash))),
+			("index", JsonValue::number(self.index)),
+			("unlock", JsonValue::string(format!("{}", self.unlock))),
+			("witness", JsonValue::string(format!("{:?}", self.witness))),
+			("sequence", JsonValue::number(self.sequence)),
+		])
+	}
+}
+
 impl Deserialize for Input {
 	fn deserialize(stream: &mut dyn Read) -> Result<Self> {
-		unimplemented!()
+		let mut tx_hash_buf = [0; 32];
+        read_buf_exact(stream, &mut tx_hash_buf)?;
+        let tx_hash = Sha256::from(tx_hash_buf);
+		let index = read_u32(stream)?;
+		let unlock_size = VarInt::deserialize(stream)?.0 as usize;
+		let mut unlock = vec![0; unlock_size];
+		read_buf_exact(stream, &mut unlock)?;
+		let sequence = read_u32(stream)?;
+
+		Ok(Input {
+			tx_hash,
+			index,
+			unlock: Script::new(unlock),
+			witness: Vec::new(),
+			sequence,
+		})
 	}
 }
 
 struct Output {
 	value: u64,
-	lock: Vec<u8>,
+	lock: Script,
+}
+
+impl Output {
+	fn into_json(&self) -> JsonValue {
+		JsonValue::object([
+			("value", JsonValue::number(self.value)),
+			("lock", JsonValue::string(format!("{}", self.lock))),
+		])
+	}
 }
 
 impl Deserialize for Output {
 	fn deserialize(stream: &mut dyn Read) -> Result<Self> {
-		unimplemented!()
+		let value = read_u64(stream)?;
+		let lock_length = VarInt::deserialize(stream)?.0 as usize;
+		let mut lock = vec![0; lock_length];
+		read_buf_exact(stream, &mut lock)?;
+
+		Ok(Output {
+			value,
+			lock: Script::new(lock),
+		})
 	}
 }
 
@@ -75,7 +131,13 @@ pub struct Tx {
 
 impl Tx {
 	pub fn into_json(&self) -> JsonValue {
-		JsonValue::null()
+		JsonValue::object([
+			("version", JsonValue::number(self.version)),
+			("segwit", JsonValue::bool(self.segwit)),
+			("inputs", JsonValue::array(self.inputs.iter().map(|e| e.into_json()))),
+			("outputs", JsonValue::array(self.outputs.iter().map(|e| e.into_json()))),
+			("lock_time", self.lock_time.to_json()),
+		])
 	}
 }
 
