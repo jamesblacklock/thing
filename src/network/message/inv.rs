@@ -34,24 +34,6 @@ pub enum InvType {
     FilteredWitnessBlock = 0x40000003,
 }
 
-// impl TryFrom<u32> for InvType {
-//     type Error = Err;
-
-//     fn try_from(v: u32) -> Result<Self> {
-//         match v {
-//             x if x == InvType::Error as u32 => Ok(InvType::Error),
-//             x if x == InvType::Tx as u32 => Ok(InvType::Tx),
-//             x if x == InvType::Block as u32 => Ok(InvType::Block),
-//             x if x == InvType::FilteredBlock as u32 => Ok(InvType::FilteredBlock),
-//             x if x == InvType::CmpctBlock as u32 => Ok(InvType::CmpctBlock),
-//             x if x == InvType::WitnessTx as u32 => Ok(InvType::WitnessTx),
-//             x if x == InvType::WitnessBlock as u32 => Ok(InvType::WitnessBlock),
-//             x if x == InvType::FilteredWitnessBlock as u32 => Ok(InvType::FilteredWitnessBlock),
-//             _ => Err(Err::NetworkError("invalid inv object type".to_owned())),
-//         }
-//     }
-// }
-
 impl From<u32> for InvType {
     fn from(v: u32) -> Self {
         match v {
@@ -159,5 +141,36 @@ impl Serialize for Inv {
             inv.serialize(stream)?;
         }
         Ok(())
+	}
+}
+
+#[derive(Clone)]
+pub struct GetData(Inv);
+
+impl GetData {
+	pub fn new(inv: Vec<InvItem>) -> Self {
+		GetData(Inv {
+			inv: inv,
+		})
+	}
+
+    pub fn items(&self) -> &[InvItem] {
+        self.0.items()
+    }
+
+	pub fn into_json(&self) -> JsonValue {
+        self.0.into_json()
+	}
+}
+
+impl Deserialize for GetData {
+	fn deserialize(stream: &mut dyn Read) -> Result<Self> {
+        Ok(GetData(Inv::deserialize(stream)?))
+	}
+}
+
+impl Serialize for GetData {
+	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
+        self.0.serialize(stream)
 	}
 }

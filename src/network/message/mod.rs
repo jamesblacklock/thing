@@ -6,7 +6,6 @@ use crate::{
     err::*,
     sha256::compute_double_sha256,
     json::JsonValue,
-	// common::now,
 };
 
 use super::{
@@ -37,6 +36,7 @@ mod pong;
 mod addr;
 mod feefilter;
 mod inv;
+mod tx;
 
 pub use {
     version::*,
@@ -46,6 +46,7 @@ pub use {
 	addr::*,
 	feefilter::*,
 	inv::*,
+	tx::*,
 };
 
 struct VarInt(u64);
@@ -261,11 +262,11 @@ pub enum Payload {
 	SendHeaders,
 	Addr(Addr),
 	Inv(Inv),
-	GetData,
+	GetData(GetData),
 	NotFound,
 	GetBlocks,
 	GetHeaders,
-	Tx,
+	Tx(Tx),
 	Block,
 	Headers,
 	GetAddr,
@@ -298,11 +299,11 @@ impl Payload {
 			Payload::SendHeaders => "sendheaders",
 			Payload::Addr(_) => "addr",
 			Payload::Inv(_) => "inv",
-			Payload::GetData => "getdata",
+			Payload::GetData(_) => "getdata",
 			Payload::NotFound => "notfound",
 			Payload::GetBlocks => "getblocks",
 			Payload::GetHeaders => "getheaders",
-			Payload::Tx => "tx",
+			Payload::Tx(_) => "tx",
 			Payload::Block => "block",
 			Payload::Headers => "headers",
 			Payload::GetAddr => "getaddr",
@@ -330,6 +331,8 @@ impl Payload {
 			Payload::Version(x) => x.into_json(),
 			Payload::Addr(x) => x.into_json(),
 			Payload::Inv(x) => x.into_json(),
+			Payload::GetData(x) => x.into_json(),
+			Payload::Tx(x) => x.into_json(),
 			Payload::Ping(x) => x.into_json(),
 			Payload::Pong(x) => x.into_json(),
 			Payload::FeeFilter(x) => x.into_json(),
@@ -344,7 +347,9 @@ impl Serialize for Payload {
 		match self {
 			Payload::Version(x) => x.serialize(stream),
 			Payload::Addr(x) => x.serialize(stream),
+			Payload::GetData(x) => x.serialize(stream),
 			Payload::Inv(x) => x.serialize(stream),
+			Payload::Tx(x) => x.serialize(stream),
 			Payload::Ping(x) => x.serialize(stream),
 			Payload::Pong(x) => x.serialize(stream),
 			Payload::FeeFilter(x) => x.serialize(stream),
@@ -380,27 +385,13 @@ impl Message {
 			payload: Payload::Pong(Pong::new(nonce)),
 		}
 	}
-
-	// pub fn wtxidrelay() -> Self {
-	// 	Message {
-	// 		network: Network::Main,
-	// 		payload: Payload::WTxIdRelay,
-	// 	}
-	// }
-
-	// pub fn sendaddrv2() -> Self {
-	// 	Message {
-	// 		network: Network::Main,
-	// 		payload: Payload::SendAddrV2,
-	// 	}
-	// }
-
-	// pub fn sendheaders() -> Self {
-	// 	Message {
-	// 		network: Network::Main,
-	// 		payload: Payload::SendHeaders,
-	// 	}
-	// }
+	
+	pub fn getdata(inv: Vec<InvItem>) -> Self {
+		Message {
+			network: Network::Main,
+			payload: Payload::GetData(GetData::new(inv)),
+		}
+	}
 
 	pub fn payload(&self) -> &Payload {
 		&self.payload
@@ -465,11 +456,11 @@ impl Deserialize for Message {
 			"sendheaders" => Payload::SendHeaders,
 			"addr" => Payload::Addr(Addr::deserialize(&mut &*payload_bytes)?),
 			"inv" => Payload::Inv(Inv::deserialize(&mut &*payload_bytes)?),
-			"getdata" => Payload::GetData,
+			"getdata" => Payload::GetData(GetData::deserialize(&mut &*payload_bytes)?),
 			"notfound" => Payload::NotFound,
 			"getblocks" => Payload::GetBlocks,
 			"getheaders" => Payload::GetHeaders,
-			"tx" => Payload::Tx,
+			"tx" => Payload::Tx(Tx::deserialize(&mut &*payload_bytes)?),
 			"block" => Payload::Block,
 			"headers" => Payload::Headers,
 			"getaddr" => Payload::GetAddr,

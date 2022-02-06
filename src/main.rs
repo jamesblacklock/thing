@@ -3,7 +3,8 @@
 use std::{
 	collections::HashMap,
 	net::{TcpStream},
-	sync::mpsc::{Sender, Receiver},
+	sync::mpsc,
+	sync::mpsc::{Receiver},
 	thread,
 };
 
@@ -24,6 +25,7 @@ use network::{
 		Ping,
 		Inv,
 		InvType,
+		GetData,
 	}
 };
 
@@ -36,104 +38,178 @@ struct Config {
 }
 
 struct Mempool {
-	ids: Vec<Sha256>,
-	txs: HashMap<Sha256, ()>,
+	txs: HashMap<Sha256, Tx>,
 }
+
+#[derive(Debug)]
+struct Tx {}
 
 impl Mempool {
 	fn new() -> Self {
 		Mempool {
-			ids: Vec::new(),
 			txs: HashMap::new(),
 		}
 	}
+	
+	fn add_tx(&mut self, id: Sha256, tx: Tx) {
+		// if self.txs.contains_key(&id) {
+		// 	println!("tx already in mempool: {}", id);
+		// } else {
+		// 	println!("add tx to mempool: {}", id);
+		// 	self.txs.insert(id, tx);
+		// }
+	}
 
-	fn add_tx_id(&mut self, id: Sha256) {
-		println!("add tx id to mempool: {}", id);
-		self.ids.push(id);
+	fn contains(&self, id: Sha256) -> bool {
+		self.txs.contains_key(&id)
 	}
 }
 
-struct Node {
-	peer: TcpStream,
+
+enum ApplicationMessage {
+	ShowMempool,
+	Shutdown,
+}
+
+struct PeerHandle {
+	addr: String,
+	writer: TcpStream,
+	// handle: thread::JoinHandle<()>,
+	info: Option<Version>,
 	config: Config,
-	peer_info: Option<Version>,
 	handshake_complete: bool,
+}
+
+struct Node {
+	peers: HashMap<usize, PeerHandle>,
+	recv: Receiver<(usize, Message)>,
 	mempool: Mempool,
 }
 
 impl Node {
-	pub fn new(addr: String) -> Result<Node> {
-		let peer = TcpStream::connect(addr)
-			.map_err(|_| Err::NetworkError("failed to connect to peer".to_owned()))?;
+	pub fn new(addrs: Vec<String>) -> Result<Node> {
+		let mut peers = HashMap::new();
+		let (send_to_parent, recv) = mpsc::channel();
+
+		for (i, addr) in addrs.iter().enumerate() {
+			println!("trying to connect to: {}", addr);
+			let writer = match TcpStream::connect(addr.clone()) {
+				Ok(stream) => stream,
+				Err(e) => {
+					println!("failed to connect to peer: {}: {}", addr, e.to_string());
+					continue;
+				}
+			};
+
+			let mut reader = writer.try_clone().unwrap();
+			let send_to_parent = send_to_parent.clone();
+			// let handle = 
+			thread::spawn(move || {
+				loop {
+					let message = reader.receive().unwrap();
+					send_to_parent.send((i, message)).unwrap();
+				}
+			});
+			
+			peers.insert(i, PeerHandle {
+				writer,
+				// handle,
+				addr: addr.clone(),
+				info: None,
+				handshake_complete: false,
+				config: Config::default(),
+			});
+
+			println!("Connected to: {}", addr);
+		}
+
+		if peers.len() == 0 {
+			return Err(Err::NetworkError("no peers connected!".to_owned()));
+		}
+
+		println!("{} peers conntected.", peers.len());
 		
 		Ok(Node {
-			peer,
-			config: Config::default(),
-			peer_info: None,
-			handshake_complete: false,
+			peers,
+			recv,
 			mempool: Mempool::new(),
 		})
 	}
 
-	fn handle_message(&mut self, m: Message) -> Result<()> {
+	fn handle_message(&mut self, peer_index: usize, m: Message) -> Result<()> {
 		match m.payload() {
-			Payload::Version(payload) => self.handle_version_message(payload),
-			Payload::Verack => self.handle_verack_message(),
-			Payload::WTxIdRelay => self.handle_wtxidrelay_message(),
-			Payload::SendAddrV2 => self.handle_sendaddrv2_message(),
-			Payload::Ping(ping) => self.handle_ping_message(ping),
-			Payload::Inv(inv) => self.handle_inv_message(inv),
+			Payload::Version(payload) => self.handle_version_message(peer_index, payload),
+			Payload::Verack => self.handle_verack_message(peer_index, ),
+			Payload::WTxIdRelay => self.handle_wtxidrelay_message(peer_index, ),
+			Payload::SendAddrV2 => self.handle_sendaddrv2_message(peer_index, ),
+			Payload::Ping(ping) => self.handle_ping_message(peer_index, ping),
+			Payload::Inv(inv) => self.handle_inv_message(peer_index, inv),
 			p => {
-				println!("{}: no response implemented\n", p.name());
+				println!("peer {}: {}: no response implemented\n", peer_index, p.name());
 				Ok(())
 			},
 		}
 	}
 
-	fn handle_version_message(&mut self, payload: &Version) -> Result<()> {
-		if !self.handshake_complete && self.peer_info.is_none() {
-			self.peer_info = Some(payload.clone());
-			self.peer.send(Message::verack())?;
+	fn handle_version_message(&mut self, peer_index: usize, payload: &Version) -> Result<()> {
+		if let Some(peer) = self.peers.get_mut(&peer_index) {
+			if !peer.handshake_complete && peer.info.is_none() {
+				peer.info = Some(payload.clone());
+				peer.writer.send(Message::verack())?;
+			}
 		}
 		Ok(())
 	}
 	
-	fn handle_ping_message(&mut self, payload: &Ping) -> Result<()> {
-		self.peer.send(Message::pong(payload.nonce()))?;
+	fn handle_ping_message(&mut self, peer_index: usize, payload: &Ping) -> Result<()> {
+		if let Some(peer) = self.peers.get_mut(&peer_index) {
+			peer.writer.send(Message::pong(payload.nonce()))?;
+		}
 		Ok(())
 	}
 
-	fn handle_verack_message(&mut self) -> Result<()> {
-		if !self.handshake_complete {
-			if  self.peer_info.is_none() {
-				return Err(Err::NetworkError("failed to complete handshake (missing version message)".to_owned()));
+	fn handle_verack_message(&mut self, peer_index: usize) -> Result<()> {
+		if let Some(peer) = self.peers.get_mut(&peer_index) {
+			if !peer.handshake_complete {
+				if  peer.info.is_none() {
+					return Err(Err::NetworkError("failed to complete handshake (missing version message)".to_owned()));
+				}
+				peer.handshake_complete = true;
 			}
-			self.handshake_complete = true;
 		}
 		Ok(())
 	}
 
-	fn handle_wtxidrelay_message(&mut self) -> Result<()> {
-		if !self.handshake_complete {
-			self.config.wxtxid = true;
-			println!("SET PARAM: wxtxid = true\n");
+	fn handle_wtxidrelay_message(&mut self, peer_index: usize) -> Result<()> {
+		if let Some(peer) = self.peers.get_mut(&peer_index) {
+			if !peer.handshake_complete {
+				peer.config.wxtxid = true;
+				println!("SET PARAM: wxtxid = true\n");
+			}
 		}
 		Ok(())
 	}
 
-	fn handle_sendaddrv2_message(&mut self) -> Result<()> {
-		if !self.handshake_complete {
-			self.config.addrv2 = true;
-			println!("SET PARAM: addrv2 = true\n");
+	fn handle_sendaddrv2_message(&mut self, peer_index: usize) -> Result<()> {
+		if let Some(peer) = self.peers.get_mut(&peer_index) {
+			if !peer.handshake_complete {
+				peer.config.addrv2 = true;
+				println!("SET PARAM: addrv2 = true\n");
+			}
 		}
 		Ok(())
 	}
 
-	fn handle_inv_message(&mut self, inv: &Inv) -> Result<()> {
+	fn handle_inv_message(&mut self, peer_index: usize, inv: &Inv) -> Result<()> {
+		let mut items = Vec::new();
 		for item in inv.items().iter() {
 			match item.object_type {
-				InvType::Tx => self.mempool.add_tx_id(item.hash),
+				InvType::Tx => {
+					if !self.mempool.contains(item.hash) {
+						items.push(item.clone());
+					}
+				},
+				//self.mempool.add_tx_id(item.hash),
 				// InvType::Block => {},
 				// InvType::FilteredBlock => {},
 				// InvType::CmpctBlock => {},
@@ -144,38 +220,69 @@ impl Node {
 				_ => unimplemented!("inv object type: {}", item.object_type),
 			}
 		}
-		
-		Ok(())
-	}
 
-	fn receive_messages(&mut self) -> Result<()> {
-		loop {
-			let message = self.peer.receive()?;
-			self.handle_message(message)?;
-		}
-	}
-
-	fn do_handshake(&mut self) -> Result<()> {
-		assert!(self.handshake_complete == false);
-
-		self.peer.send(Message::version(self.peer.peer_addr().unwrap()))?;
-		self.receive_messages()?;
-
-		if !self.handshake_complete {
-			return Err(Err::NetworkError("failed to complete handshake".to_owned()));
+		if items.len() > 0 {
+			self.peers.get_mut(&peer_index).unwrap().writer.send(Message::getdata(items))?;
 		}
 
 		Ok(())
 	}
 	
-	pub fn run(&mut self) -> Result<()> {
-		self.do_handshake()?;
+	pub fn run(mut self) -> Result<()> {
+		for (i, peer) in self.peers.iter_mut() {
+			if let Err(e) = peer.writer.send(Message::version(peer.addr.clone())) {
+				println!("peer {}: error: {}", i, e);
+			}
+		}
+		
+		let (send, recv) = mpsc::channel();
+		let t = thread::spawn(move || {
+			'outer: loop {
+				while let Ok((i, m)) = self.recv.try_recv() {
+					if let Err(e) = self.handle_message(i, m) {
+						println!("{}", e);
+					}
+				}
+				while let Ok(m) = recv.try_recv() {
+					match m {
+						ApplicationMessage::Shutdown => {		
+							println!("shutting down...");
+							break 'outer;
+						},
+						ApplicationMessage::ShowMempool => {
+							println!("{:?}", self.mempool.txs);
+						},
+					}
+				}
+				
+				thread::yield_now();
+			}
+		});
+
+		let stdin = std::io::stdin();
+		
+		loop {
+			let mut buf = String::new();
+			stdin.read_line(&mut buf).unwrap();
+			match buf.trim() {
+				"exit" => {
+					send.send(ApplicationMessage::Shutdown).unwrap();
+					break;
+				},
+				"mempool" => {
+					send.send(ApplicationMessage::ShowMempool).unwrap();
+				}
+				_ => {},
+			}
+		}
+
+		t.join().unwrap();
 		Ok(())
 	}
 }
 
 fn main() -> Result<()> {
-	let addr = std::env::args().nth(1).expect("no IP address specified");
-	let mut node = Node::new(addr)?;
+	let addrs = std::env::args().skip(1).collect();
+	let node = Node::new(addrs)?;
 	node.run()
 }
