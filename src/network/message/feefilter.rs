@@ -30,6 +30,10 @@ impl FeeFilter {
 	pub fn into_json(&self) -> JsonValue {
 		JsonValue::number(self.feerate)
 	}
+
+	pub fn feerate(&self) -> u64 {
+		self.feerate
+	}
 }
 
 impl Deserialize for FeeFilter {

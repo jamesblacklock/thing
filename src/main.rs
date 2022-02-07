@@ -26,19 +26,19 @@ use network::{
 		Ping,
 		Inv,
 		InvType,
-		GetData,
 		Tx,
+		FeeFilter,
 	}
 };
 
 use err::*;
-use script::*;
 use json::*;
 
 #[derive(Default)]
 struct Config {
 	wxtxid: bool,
 	addrv2: bool,
+	feerate: u64,
 }
 
 struct Mempool {
@@ -144,6 +144,7 @@ impl Node {
 		match m.take_payload() {
 			Payload::Version(payload) => self.handle_version_message(peer_index, payload),
 			Payload::Verack => self.handle_verack_message(peer_index),
+			Payload::FeeFilter(filter) => self.handle_feefilter_message(peer_index, filter),
 			Payload::WTxIdRelay => self.handle_wtxidrelay_message(peer_index),
 			Payload::SendAddrV2 => self.handle_sendaddrv2_message(peer_index),
 			Payload::Ping(ping) => self.handle_ping_message(peer_index, ping),
@@ -181,6 +182,14 @@ impl Node {
 				}
 				peer.handshake_complete = true;
 			}
+		}
+		Ok(())
+	}
+
+	fn handle_feefilter_message(&mut self, peer_index: usize, feefilter: FeeFilter) -> Result<()> {
+		if let Some(peer) = self.peers.get_mut(&peer_index) {
+			peer.config.feerate = feefilter.feerate();
+			println!("SET PARAM: feerate = {}\n", peer.config.feerate);
 		}
 		Ok(())
 	}

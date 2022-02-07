@@ -155,9 +155,9 @@ impl GetData {
 		})
 	}
 
-    pub fn items(&self) -> &[InvItem] {
-        self.0.items()
-    }
+    // pub fn items(&self) -> &[InvItem] {
+    //     self.0.items()
+    // }
 
 	pub fn into_json(&self) -> JsonValue {
         self.0.into_json()
