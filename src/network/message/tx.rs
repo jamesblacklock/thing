@@ -13,16 +13,20 @@ use crate::common::{
 	read_u8,
 	read_u32,
 	read_u64,
+	read_sha256,
+	read_var_int,
 	read_buf_exact,
-	write_u8,
+	write_u16_be,
 	write_u32,
 	write_u64,
+	write_sha256,
+	write_var_int,
+	write_buf_exact,
 };
 
 use super::{
 	Deserialize,
 	Serialize,
-	VarInt,
 };
 
 #[derive(Clone, Copy)]
@@ -42,12 +46,24 @@ impl AbsoluteLockTime {
 	}
 }
 
-impl From<u32> for AbsoluteLockTime {
-	fn from(n: u32) -> AbsoluteLockTime {
+impl Serialize for AbsoluteLockTime {
+	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
+		let n = match *self {
+			AbsoluteLockTime::None => 0,
+			AbsoluteLockTime::BlockNumber(n) => n,
+			AbsoluteLockTime::Timestamp(n) => n,
+		};
+		write_u32(stream, n)
+	}
+}
+
+impl Deserialize for AbsoluteLockTime {
+	fn deserialize(stream: &mut dyn Read) -> Result<AbsoluteLockTime> {
+		let n = read_u32(stream)?;
 		match n {
-			0 => AbsoluteLockTime::None,
-			x if x < 500000000 => AbsoluteLockTime::BlockNumber(x),
-			x => AbsoluteLockTime::Timestamp(x),
+			0 => Ok(AbsoluteLockTime::None),
+			x if x < 500000000 => Ok(AbsoluteLockTime::BlockNumber(x)),
+			x => Ok(AbsoluteLockTime::Timestamp(x)),
 		}
 	}
 }
@@ -93,7 +109,7 @@ struct Input {
 	index: u32,
 	unlock: Script,
 	witness: Vec<Vec<u8>>,
-	rel_lock_time: RelativeLockTime,
+	sequence: u32,
 }
 
 impl Input {
@@ -103,29 +119,41 @@ impl Input {
 			("index", JsonValue::number(self.index)),
 			("unlock", JsonValue::string(format!("{}", self.unlock))),
 			("witness", JsonValue::string(format!("{:?}", self.witness))),
-			("rel_lock_time", self.rel_lock_time.to_json()),
+			("rel_lock_time", self.rel_lock_time().to_json()),
 		])
+	}
+
+	fn rel_lock_time(&self) -> RelativeLockTime {
+		RelativeLockTime::from(self.sequence)
 	}
 }
 
 impl Deserialize for Input {
 	fn deserialize(stream: &mut dyn Read) -> Result<Self> {
-		let mut tx_hash_buf = [0; 32];
-        read_buf_exact(stream, &mut tx_hash_buf)?;
-        let tx_hash = Sha256::from(tx_hash_buf);
+        let tx_hash = read_sha256(stream)?;
 		let index = read_u32(stream)?;
-		let unlock_size = VarInt::deserialize(stream)?.0 as usize;
+		let unlock_size = read_var_int(stream)? as usize;
 		let mut unlock = vec![0; unlock_size];
 		read_buf_exact(stream, &mut unlock)?;
-		let rel_lock_time = RelativeLockTime::from(read_u32(stream)?);
+		let sequence = read_u32(stream)?;
 
 		Ok(Input {
 			tx_hash,
 			index,
 			unlock: Script::new(unlock),
 			witness: Vec::new(),
-			rel_lock_time,
+			sequence,
 		})
+	}
+}
+
+impl Serialize for Input {
+	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
+        write_sha256(stream, &self.tx_hash)?;
+		write_u32(stream, self.index)?;
+		write_var_int(stream, self.unlock.len() as u64)?;
+		write_buf_exact(stream, self.unlock.as_bytes())?;
+		write_u32(stream, self.sequence)
 	}
 }
 
@@ -146,7 +174,7 @@ impl Output {
 impl Deserialize for Output {
 	fn deserialize(stream: &mut dyn Read) -> Result<Self> {
 		let value = read_u64(stream)?;
-		let lock_length = VarInt::deserialize(stream)?.0 as usize;
+		let lock_length = read_var_int(stream)? as usize;
 		let mut lock = vec![0; lock_length];
 		read_buf_exact(stream, &mut lock)?;
 
@@ -154,6 +182,14 @@ impl Deserialize for Output {
 			value,
 			lock: Script::new(lock),
 		})
+	}
+}
+
+impl Serialize for Output {
+	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
+		write_u64(stream, self.value)?;
+		write_var_int(stream, self.lock.len() as u64)?;
+		write_buf_exact(stream, self.lock.as_bytes())
 	}
 }
 
@@ -181,15 +217,15 @@ impl Deserialize for Tx {
 	fn deserialize(stream: &mut dyn Read) -> Result<Tx> {
 		let version = read_u32(stream)?;
 		let (segwit, input_count) = {
-			let maybe_input_count = VarInt::deserialize(stream)?;
-			if maybe_input_count.0 == 0 {
+			let maybe_input_count = read_var_int(stream)?;
+			if maybe_input_count == 0 {
 				let flag = read_u8(stream)?;
 				if flag != 1 {
 					return Err(Err::NetworkError("invalid transaction: zero inputs".to_owned()));
 				}
-				(true, VarInt::deserialize(stream)?.0)
+				(true, read_var_int(stream)?)
 			} else {
-				(false, maybe_input_count.0)
+				(false, maybe_input_count)
 			}
 		};
 
@@ -198,7 +234,7 @@ impl Deserialize for Tx {
 			inputs.push(Input::deserialize(stream)?);
 		}
 
-		let output_count = VarInt::deserialize(stream)?.0;
+		let output_count = read_var_int(stream)? as usize;
 		let mut outputs = Vec::new();
 		for _ in 0..output_count {
 			outputs.push(Output::deserialize(stream)?);
@@ -206,10 +242,10 @@ impl Deserialize for Tx {
 
 		if segwit {
 			for input in inputs.iter_mut() {
-				let item_count = VarInt::deserialize(stream)?.0;
+				let item_count = read_var_int(stream)?;
 				let mut items = Vec::new();
 				for _ in 0..item_count {
-					let size = VarInt::deserialize(stream)?.0 as usize;
+					let size = read_var_int(stream)? as usize;
 					let mut buf = vec![0; size];
 					read_buf_exact(stream, &mut buf)?;
 					items.push(buf);
@@ -219,7 +255,7 @@ impl Deserialize for Tx {
 			}
 		}
 
-		let abs_lock_time = AbsoluteLockTime::from(read_u32(stream)?);
+		let abs_lock_time = AbsoluteLockTime::deserialize(stream)?;
 
 		Ok(Tx {
 			version,
@@ -233,6 +269,31 @@ impl Deserialize for Tx {
 
 impl Serialize for Tx {
 	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
-		Ok(())
+		write_u32(stream, self.version)?;
+		if self.segwit {
+			write_u16_be(stream, 1)?;
+		}
+		
+		write_var_int(stream, self.inputs.len() as u64)?;
+		for input in self.inputs.iter() {
+			input.serialize(stream)?;
+		}
+
+		write_var_int(stream, self.outputs.len() as u64)?;
+		for output in self.outputs.iter() {
+			output.serialize(stream)?;
+		}
+
+		if self.segwit {
+			for input in self.inputs.iter() {
+				write_var_int(stream, input.witness.len() as u64)?;
+				for witness in input.witness.iter() {
+					write_var_int(stream, witness.len() as u64)?;
+					write_buf_exact(stream, &witness)?;
+				}
+			}
+		}
+
+		self.abs_lock_time.serialize(stream)
 	}
 }

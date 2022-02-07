@@ -11,15 +11,16 @@ use crate::{
 
 use crate::common::{
 	read_u32,
-    read_buf_exact,
+    read_var_int,
+    read_sha256,
     write_u32,
-    write_buf_exact,
+    write_var_int,
+    write_sha256,
 };
 
 use super::{
 	Deserialize,
 	Serialize,
-    VarInt,
 };
 
 #[repr(u32)]
@@ -83,9 +84,7 @@ impl InvItem {
 impl Deserialize for InvItem {
     fn deserialize(stream: &mut dyn Read) -> Result<Self> {
         let object_type = InvType::from(read_u32(stream)?);
-        let mut hash_buf = [0; 32];
-        read_buf_exact(stream, &mut hash_buf)?;
-        let hash = Sha256::from(hash_buf);
+        let hash = read_sha256(stream)?;
         
         Ok(InvItem {
             object_type,
@@ -97,7 +96,7 @@ impl Deserialize for InvItem {
 impl Serialize for InvItem {
     fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
         write_u32(stream, self.object_type as u32)?;
-        write_buf_exact(stream, self.hash.as_bytes())?;
+        write_sha256(stream, &self.hash)?;
         Ok(())
     }
 }
@@ -125,7 +124,7 @@ impl Inv {
 
 impl Deserialize for Inv {
 	fn deserialize(stream: &mut dyn Read) -> Result<Inv> {
-		let count = VarInt::deserialize(stream)?.0 as usize;
+		let count = read_var_int(stream)? as usize;
         let mut inv = Vec::new();
         for _ in 0..count {
             inv.push(InvItem::deserialize(stream)?);
@@ -137,7 +136,7 @@ impl Deserialize for Inv {
 
 impl Serialize for Inv {
 	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
-        VarInt(self.inv.len() as u64).serialize(stream)?;
+        write_var_int(stream, self.inv.len() as u64)?;
 		for inv in &self.inv {
             inv.serialize(stream)?;
         }

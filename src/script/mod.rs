@@ -60,6 +60,14 @@ impl Script {
 			offset: 0,
 		}
 	}
+
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+
+	pub fn as_bytes(&self) -> &[u8] {
+		&*self.0
+	}
 }
 
 impl <'a> Iterator for ScriptIterator<'a> {

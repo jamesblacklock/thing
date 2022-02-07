@@ -10,16 +10,12 @@ use crate::{
 };
 
 use crate::common::{
-	read_u8,
-	read_u16,
 	read_u16_be,
 	read_u32,
 	read_u32_be,
 	read_u64,
 	read_buf_exact,
 	read_str_exact,
-	write_u8,
-	write_u16,
 	write_u16_be,
 	write_u32,
 	write_u32_be,
@@ -41,6 +37,8 @@ mod addr;
 mod feefilter;
 mod inv;
 mod tx;
+mod getheaders;
+mod headers;
 
 pub use {
     version::*,
@@ -51,67 +49,9 @@ pub use {
 	feefilter::*,
 	inv::*,
 	tx::*,
+	getheaders::*,
+	headers::*,
 };
-
-struct VarInt(u64);
-
-impl Serialize for VarInt {
-	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
-		if self.0 < 0xfd {
-			write_u8(stream, self.0 as u8)
-		} else if self.0 < 0xffff {
-			write_u8(stream, 0xfd)?;
-			write_u16(stream, self.0 as u16)
-		} else if self.0 < 0xffff_ffff {
-			write_u8(stream, 0xfe)?;
-			write_u32(stream, self.0 as u32)
-		} else {
-			write_u8(stream, 0xff)?;
-			write_u64(stream, self.0 as u64)
-		}
-	}
-}
-
-impl Deserialize for VarInt {
-	fn deserialize(stream: &mut dyn Read) -> Result<Self> {
-		match read_u8(stream)? {
-			0xfd => {
-				Ok(VarInt(read_u16(stream)? as u64))
-			},
-			0xfe => {
-				Ok(VarInt(read_u32(stream)? as u64))
-			},
-			0xff => {
-				Ok(VarInt(read_u64(stream)? as u64))
-			},
-			b => {
-				Ok(VarInt(b as u64))
-			}
-		}
-	}
-}
-
-struct VarStr(String);
-
-impl Serialize for VarStr {
-	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
-		VarInt(self.0.len() as u64).serialize(stream)?;
-		if self.0.len() > 0 {
-			stream.write(self.0.as_bytes())
-				.map_err(|err| Err::NetworkError(err.to_string()))?;
-		}
-		Ok(())
-	}
-}
-
-impl Deserialize for VarStr {
-	fn deserialize(stream: &mut dyn Read) -> Result<Self> {
-		let len = VarInt::deserialize(stream)?.0 as usize;
-		let mut buf = vec![0; len];
-		read_buf_exact(stream, &mut buf)?;
-		Ok(VarStr(String::from_utf8(buf).unwrap()))
-	}
-}
 
 #[derive(Clone)]
 struct ShortNetAddr {
@@ -269,7 +209,7 @@ pub enum Payload {
 	GetData(GetData),
 	NotFound,
 	GetBlocks,
-	GetHeaders,
+	GetHeaders(GetHeaders),
 	Tx(Sha256, Tx),
 	Block,
 	Headers,
@@ -306,7 +246,7 @@ impl Payload {
 			Payload::GetData(_) => "getdata",
 			Payload::NotFound => "notfound",
 			Payload::GetBlocks => "getblocks",
-			Payload::GetHeaders => "getheaders",
+			Payload::GetHeaders(_) => "getheaders",
 			Payload::Tx(_, _) => "tx",
 			Payload::Block => "block",
 			Payload::Headers => "headers",
@@ -470,7 +410,7 @@ impl Deserialize for Message {
 			"getdata" => Payload::GetData(GetData::deserialize(&mut &*payload_bytes)?),
 			"notfound" => Payload::NotFound,
 			"getblocks" => Payload::GetBlocks,
-			"getheaders" => Payload::GetHeaders,
+			"getheaders" => Payload::GetHeaders(GetHeaders::deserialize(&mut &*payload_bytes)?),
 			"tx" => Payload::Tx(sha256, Tx::deserialize(&mut &*payload_bytes)?),
 			"block" => Payload::Block,
 			"headers" => Payload::Headers,

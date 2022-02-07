@@ -5,13 +5,16 @@ use std::{
 use crate::{
 	err::*,
 	json::JsonValue,
+	common::{
+		read_var_int,
+		write_var_int,
+	},
 };
 
 use super::{
 	Deserialize,
 	Serialize,
     NetAddr,
-    VarInt,
 };
 
 #[derive(Clone)]
@@ -33,7 +36,7 @@ impl Addr {
 
 impl Deserialize for Addr {
 	fn deserialize(stream: &mut dyn Read) -> Result<Addr> {
-		let count = VarInt::deserialize(stream)?.0 as usize;
+		let count = read_var_int(stream)? as usize;
         let mut addrs = Vec::new();
         for _ in 0..count {
             addrs.push(NetAddr::deserialize(stream)?);
@@ -45,7 +48,7 @@ impl Deserialize for Addr {
 
 impl Serialize for Addr {
 	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
-        VarInt(self.addrs.len() as u64).serialize(stream)?;
+        write_var_int(stream, self.addrs.len() as u64)?;
 		for addr in &self.addrs {
             addr.serialize(stream)?;
         }

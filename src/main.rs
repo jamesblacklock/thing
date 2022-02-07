@@ -6,6 +6,7 @@ use std::{
 	sync::mpsc,
 	sync::mpsc::{Receiver},
 	thread,
+	io::Write,
 };
 
 #[macro_use]
@@ -34,12 +35,12 @@ use network::{
 };
 
 use err::*;
-use json::*;
 
 #[derive(Default)]
 struct Config {
 	wxtxid: bool,
 	addrv2: bool,
+	sendheaders: bool,
 	feerate: u64,
 }
 
@@ -153,6 +154,7 @@ impl Node {
 			Payload::Ping(ping) => self.handle_ping_message(peer_index, ping),
 			Payload::Inv(inv) => self.handle_inv_message(peer_index, inv),
 			Payload::Tx(id, tx) => self.handle_tx_message(peer_index, id, tx),
+			Payload::SendHeaders => self.handle_sendheaders_message(peer_index),
 			p => {
 				log_debug!("peer {}: {}: no response implemented\n", peer_index, p.name());
 				Ok(())
@@ -217,6 +219,14 @@ impl Node {
 		Ok(())
 	}
 
+	fn handle_sendheaders_message(&mut self, peer_index: usize) -> Result<()> {
+		if let Some(peer) = self.peers.get_mut(&peer_index) {
+			peer.config.sendheaders = true;
+			log_debug!("SET PARAM: sendheaders = true\n");
+		}
+		Ok(())
+	}
+
 	fn handle_inv_message(&mut self, peer_index: usize, inv: Inv) -> Result<()> {
 		let mut items = Vec::new();
 		for item in inv.items().iter() {
@@ -226,7 +236,6 @@ impl Node {
 						items.push(item.clone());
 					}
 				},
-				//self.mempool.add_tx_id(item.hash),
 				// InvType::Block => {},
 				// InvType::FilteredBlock => {},
 				// InvType::CmpctBlock => {},
@@ -257,7 +266,8 @@ impl Node {
 			}
 		}
 		
-		let (send, recv) = mpsc::channel();
+		let (send_cmd, recv_cmd) = mpsc::channel();
+		let (send_cmd_done, recv_cmd_done) = mpsc::channel();
 		let t = thread::spawn(move || {
 			'outer: loop {
 				while let Ok((i, m)) = self.recv.try_recv() {
@@ -265,30 +275,38 @@ impl Node {
 						log_error!("{}", e);
 					}
 				}
-				while let Ok(m) = recv.try_recv() {
+				while let Ok(m) = recv_cmd.try_recv() {
 					match m {
 						ApplicationMessage::Shutdown => {		
-							println!("shutting down...");
+							println!("<shutting down>");
+							send_cmd_done.send(()).unwrap();
 							break 'outer;
 						},
 						ApplicationMessage::ShowMempool => {
 							if self.mempool.txs.len() == 0 {
-								println!("<mempool empty>");
+								println!("<empty>");
 							}
 							for id in self.mempool.txs.keys() {
 								println!("{}", id);
 							}
 						},
 						ApplicationMessage::ShowTx(id) => {
-							if let Ok(id) = Sha256::try_from(id.as_str()) {
+							let found = if let Ok(id) = Sha256::try_from(id.as_str()) {
 								if self.mempool.txs.contains_key(&id) {
 									println!("{}", self.mempool.txs[&id].into_json());
-									continue 'outer;
+									true
+								} else {
+									false
 								}
+							} else {
+								false
+							};
+							if !found {
+								println!("<not found>");
 							}
-							println!("no tx found");
 						},
 					}
+					send_cmd_done.send(()).unwrap();
 				}
 				
 				thread::yield_now();
@@ -296,25 +314,31 @@ impl Node {
 		});
 
 		let stdin = std::io::stdin();
+		let mut stdout = std::io::stdout();
 		
 		loop {
 			let mut buf = String::new();
+			stdout.write(">> ".as_bytes()).unwrap();
+			stdout.flush().unwrap();
 			stdin.read_line(&mut buf).unwrap();
 			let tok: Vec<_> = buf.split_ascii_whitespace().collect();
 			match *tok {
 				["exit"] => {
-					send.send(ApplicationMessage::Shutdown).unwrap();
+					send_cmd.send(ApplicationMessage::Shutdown).unwrap();
+					recv_cmd_done.recv().unwrap();
 					break;
 				},
 				["mempool"] => {
-					send.send(ApplicationMessage::ShowMempool).unwrap();
+					send_cmd.send(ApplicationMessage::ShowMempool).unwrap();
+					recv_cmd_done.recv().unwrap();
 				}
 				["tx", id] => {
-					send.send(ApplicationMessage::ShowTx(id.into())).unwrap();
+					send_cmd.send(ApplicationMessage::ShowTx(id.into())).unwrap();
+					recv_cmd_done.recv().unwrap();
 				}
 				[] => {}
 				_ => {
-					println!("invalid command.");
+					println!("<invalid command>");
 				},
 			}
 		}

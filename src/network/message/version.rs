@@ -15,16 +15,17 @@ use crate::common::{
 	read_u32,
 	read_i64,
 	read_u64,
+	read_var_str,
 	write_bool,
 	write_i32,
 	write_u32,
 	write_i64,
 	write_u64,
+	write_var_str,
 };
 
 use super::{
 	ShortNetAddr,
-	VarStr,
 	Deserialize,
 	Serialize,
 };
@@ -90,7 +91,7 @@ impl Deserialize for Version {
 		let addr_recv = ShortNetAddr::deserialize(stream)?;
 		let addr_from = ShortNetAddr::deserialize(stream)?;
 		let nonce = read_u64(stream)?;
-		let user_agent = VarStr::deserialize(stream)?.0;
+		let user_agent = read_var_str(stream)?;
 		let start_height = read_u32(stream)?;
 		let relay = read_bool(stream)?;
 
@@ -116,7 +117,7 @@ impl Serialize for Version {
 		self.addr_recv.serialize(stream)?;
 		self.addr_from.serialize(stream)?;
 		write_u64(stream, self.nonce)?;
-		VarStr(self.user_agent.clone()).serialize(stream)?;
+		write_var_str(stream, &self.user_agent)?;
 		write_u32(stream, self.start_height)?;
 		write_bool(stream, self.relay)
 	}
