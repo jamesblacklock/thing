@@ -26,28 +26,64 @@ use super::{
 };
 
 #[derive(Clone, Copy)]
-enum LockTime {
+enum AbsoluteLockTime {
 	BlockNumber(u32),
 	Timestamp(u32),
 	None,
 }
 
-impl LockTime {
+impl AbsoluteLockTime {
 	fn to_json(&self) -> JsonValue {
 		match *self {
-			LockTime::BlockNumber(n) => JsonValue::object([("block", JsonValue::number(n))]),
-			LockTime::Timestamp(n) => JsonValue::object([("timestamp", JsonValue::number(n))]),
-			LockTime::None => JsonValue::null(),
+			AbsoluteLockTime::BlockNumber(n) => JsonValue::object([("block", JsonValue::number(n))]),
+			AbsoluteLockTime::Timestamp(n) => JsonValue::object([("timestamp", JsonValue::number(n))]),
+			AbsoluteLockTime::None => JsonValue::null(),
 		}
 	}
 }
 
-impl From<u32> for LockTime {
-	fn from(n: u32) -> LockTime {
+impl From<u32> for AbsoluteLockTime {
+	fn from(n: u32) -> AbsoluteLockTime {
 		match n {
-			0 => LockTime::None,
-			x if x < 500000000 => LockTime::BlockNumber(x),
-			x => LockTime::Timestamp(x),
+			0 => AbsoluteLockTime::None,
+			x if x < 500000000 => AbsoluteLockTime::BlockNumber(x),
+			x => AbsoluteLockTime::Timestamp(x),
+		}
+	}
+}
+
+#[derive(Clone, Copy)]
+enum RelativeLockTime {
+	Blocks(u32),
+	Seconds(u32),
+	None,
+}
+
+impl RelativeLockTime {
+	fn to_json(&self) -> JsonValue {
+		match *self {
+			RelativeLockTime::Blocks(n) => JsonValue::object([("blocks", JsonValue::number(n))]),
+			RelativeLockTime::Seconds(n) => JsonValue::object([("seconds", JsonValue::number(n))]),
+			RelativeLockTime::None => JsonValue::null(),
+		}
+	}
+}
+
+const RELATIVE_LOCK_TIME_DISABLE: u32 = 1 << 31;
+const RELATIVE_LOCK_TIME_SECONDS: u32 = 1 << 22;
+const RELATIVE_LOCK_TIME_VALUE: u32   = 0xffff;
+
+impl From<u32> for RelativeLockTime {
+	fn from(n: u32) -> RelativeLockTime {
+		let disable     = n & RELATIVE_LOCK_TIME_DISABLE != 0;
+		let use_seconds = n & RELATIVE_LOCK_TIME_SECONDS != 0;
+		let value       = n & RELATIVE_LOCK_TIME_VALUE;
+		if disable {
+			RelativeLockTime::None
+		} else if use_seconds {
+			RelativeLockTime::Seconds(value * 512)
+		} else {
+			RelativeLockTime::Blocks(value)
 		}
 	}
 }
@@ -57,7 +93,7 @@ struct Input {
 	index: u32,
 	unlock: Script,
 	witness: Vec<Vec<u8>>,
-	sequence: u32,
+	rel_lock_time: RelativeLockTime,
 }
 
 impl Input {
@@ -67,7 +103,7 @@ impl Input {
 			("index", JsonValue::number(self.index)),
 			("unlock", JsonValue::string(format!("{}", self.unlock))),
 			("witness", JsonValue::string(format!("{:?}", self.witness))),
-			("sequence", JsonValue::number(self.sequence)),
+			("rel_lock_time", self.rel_lock_time.to_json()),
 		])
 	}
 }
@@ -81,14 +117,14 @@ impl Deserialize for Input {
 		let unlock_size = VarInt::deserialize(stream)?.0 as usize;
 		let mut unlock = vec![0; unlock_size];
 		read_buf_exact(stream, &mut unlock)?;
-		let sequence = read_u32(stream)?;
+		let rel_lock_time = RelativeLockTime::from(read_u32(stream)?);
 
 		Ok(Input {
 			tx_hash,
 			index,
 			unlock: Script::new(unlock),
 			witness: Vec::new(),
-			sequence,
+			rel_lock_time,
 		})
 	}
 }
@@ -126,7 +162,7 @@ pub struct Tx {
 	segwit: bool,
 	inputs: Vec<Input>,
 	outputs: Vec<Output>,
-	lock_time: LockTime,
+	abs_lock_time: AbsoluteLockTime,
 }
 
 impl Tx {
@@ -136,7 +172,7 @@ impl Tx {
 			("segwit", JsonValue::bool(self.segwit)),
 			("inputs", JsonValue::array(self.inputs.iter().map(|e| e.into_json()))),
 			("outputs", JsonValue::array(self.outputs.iter().map(|e| e.into_json()))),
-			("lock_time", self.lock_time.to_json()),
+			("abs_lock_time", self.abs_lock_time.to_json()),
 		])
 	}
 }
@@ -175,7 +211,7 @@ impl Deserialize for Tx {
 				for _ in 0..item_count {
 					let size = VarInt::deserialize(stream)?.0 as usize;
 					let mut buf = vec![0; size];
-					read_buf_exact(stream, &mut buf);
+					read_buf_exact(stream, &mut buf)?;
 					items.push(buf);
 				}
 
@@ -183,14 +219,14 @@ impl Deserialize for Tx {
 			}
 		}
 
-		let lock_time = LockTime::from(read_u32(stream)?);
+		let abs_lock_time = AbsoluteLockTime::from(read_u32(stream)?);
 
 		Ok(Tx {
 			version,
 			segwit,
 			inputs,
 			outputs,
-			lock_time,
+			abs_lock_time,
 		})
 	}
 }
