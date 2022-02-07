@@ -272,6 +272,9 @@ impl Node {
 							break 'outer;
 						},
 						ApplicationMessage::ShowMempool => {
+							if self.mempool.txs.len() == 0 {
+								println!("<mempool empty>");
+							}
 							for id in self.mempool.txs.keys() {
 								println!("{}", id);
 							}
@@ -298,24 +301,21 @@ impl Node {
 			let mut buf = String::new();
 			stdin.read_line(&mut buf).unwrap();
 			let tok: Vec<_> = buf.split_ascii_whitespace().collect();
-			if tok.len() == 1 {
-				match tok[0] {
-					"exit" => {
-						send.send(ApplicationMessage::Shutdown).unwrap();
-						break;
-					},
-					"mempool" => {
-						send.send(ApplicationMessage::ShowMempool).unwrap();
-					}
-					_ => {},
+			match *tok {
+				["exit"] => {
+					send.send(ApplicationMessage::Shutdown).unwrap();
+					break;
+				},
+				["mempool"] => {
+					send.send(ApplicationMessage::ShowMempool).unwrap();
 				}
-			} else if tok.len() == 2 {
-				match tok[0] {
-					"tx" => {
-						send.send(ApplicationMessage::ShowTx(tok[1].into())).unwrap();
-					},
-					_ => {}
+				["tx", id] => {
+					send.send(ApplicationMessage::ShowTx(id.into())).unwrap();
 				}
+				[] => {}
+				_ => {
+					println!("invalid command.");
+				},
 			}
 		}
 
