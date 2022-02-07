@@ -1,7 +1,4 @@
-use std::{
-    iter::IntoIterator,
-    fmt,
-};
+use std::{iter::IntoIterator, fmt};
 
 pub enum JsonValue {
     Null,
@@ -37,24 +34,12 @@ impl JsonValue {
 
     fn fmt(&self, f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
         match self {
-            JsonValue::Null => {
-                write!(f, "null")
-            },
-            JsonValue::String(s) => {
-                JsonValue::fmt_string(f, s)
-            },
-            JsonValue::Number(n) => {
-                write!(f, "{}", n)
-            },
-            JsonValue::Bool(b) => {
-                write!(f, "{}", b)
-            },
-            JsonValue::Object(map) => {
-                JsonValue::fmt_object(f, &map, indent)
-            },
-            JsonValue::Array(vec) => {
-                JsonValue::fmt_array(f, &vec, indent)
-            },
+            JsonValue::Null        => write!(f, "null"),
+            JsonValue::String(s)   => JsonValue::fmt_string(f, s),
+            JsonValue::Number(n)   => write!(f, "{}", n),
+            JsonValue::Bool(b)     => write!(f, "{}", b),
+            JsonValue::Object(map) => JsonValue::fmt_object(f, &map, indent),
+            JsonValue::Array(vec)  => JsonValue::fmt_array(f, &vec, indent),
         }
     }
 
@@ -62,14 +47,14 @@ impl JsonValue {
         write!(f, "\"")?;
         for c in s.chars() {
             match c {
-                '\n' => write!(f, "\\n")?,
-                '\r' => write!(f, "\\r")?,
-                '\t' => write!(f, "\\t")?,
+                '\n'   => write!(f, "\\n")?,
+                '\r'   => write!(f, "\\r")?,
+                '\t'   => write!(f, "\\t")?,
                 '\x0c' => write!(f, "\\f")?,
                 '\x08' => write!(f, "\\b")?,
-                '\\' => write!(f, "\\\\")?,
-                '"' => write!(f, "\\\"")?,
-                _ => write!(f, "{}", c)?,
+                '\\'   => write!(f, "\\\\")?,
+                '"'    => write!(f, "\\\"")?,
+                _      => write!(f, "{}", c)?,
             }
         }
         write!(f, "\"")

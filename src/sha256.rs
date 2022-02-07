@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::err::*;
+
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Sha256 {
 	digest: [u32; 8]
@@ -8,13 +10,6 @@ pub struct Sha256 {
 impl Sha256 {
 	pub fn default() -> Sha256 {
 		Sha256 { digest: [0; 8] }
-	}
-
-	pub fn from(bytes: [u8; 32]) -> Self {
-		let words: &[u32] = unsafe { std::slice::from_raw_parts(std::mem::transmute(&bytes), 8)};
-		let mut digest = [0; 8];
-		digest.copy_from_slice(words);
-		Sha256 { digest }
 	}
 
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -31,6 +26,50 @@ impl Sha256 {
 
 	pub fn as_bytes<'a>(&'a self) -> &'a[u8] {
 		unsafe { std::slice::from_raw_parts(std::mem::transmute(&self.digest[0]), 32)}
+	}
+}
+
+impl std::convert::From<[u8; 32]> for Sha256 {
+	fn from(bytes: [u8; 32]) -> Self {
+		let words: &[u32] = unsafe { std::slice::from_raw_parts(std::mem::transmute(&bytes), 8)};
+		let mut digest = [0; 8];
+		digest.copy_from_slice(words);
+		Sha256 { digest }
+	}
+}
+
+fn hexdigit_to_int(n: u8) -> Option<u8> {
+	const ZERO: u8 = '0' as u8;
+	const A_UPPER: u8 = 'A' as u8;
+	const A_LOWER: u8 = 'a' as u8;
+
+	if n - ZERO < 10 {
+		Some(n - ZERO)
+	} else if n - A_UPPER < 6 {
+		Some(n - A_UPPER + 10)
+	} else if n - A_LOWER < 6 {
+		Some(n - A_LOWER + 10)
+	} else {
+		None
+	}
+}
+
+impl std::convert::TryFrom<&str> for Sha256 {
+	type Error = crate::err::Err;
+
+	fn try_from(s: &str) -> crate::err::Result<Self> {
+		let bytes = s.as_bytes();
+		let mut digest = [0; 32];
+		let err = Err::ValueError(format!("the input `{}` cannot be converted to a sha256 hash", s));
+		if bytes.len() != 64 {
+			return Err(err)
+		}
+		for (i, chunk) in bytes.chunks_exact(2).enumerate() {
+			let a = hexdigit_to_int(chunk[0]).ok_or_else(|| err.clone())?;
+			let b = hexdigit_to_int(chunk[1]).ok_or_else(|| err.clone())?;
+			digest[i] = (a << 4) | b;
+		}
+		Ok(Sha256::from(digest))
 	}
 }
 

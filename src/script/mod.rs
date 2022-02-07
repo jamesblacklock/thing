@@ -32,7 +32,7 @@ impl <'a> ScriptIterator<'a> {
 	fn next_u16(&mut self) -> u16 {
 		const SIZE: usize = std::mem::size_of::<u16>();
 		let n = u16::from_le_bytes(self.script[self.offset..self.offset + SIZE].try_into().unwrap());
-		self.offset += 2;
+		self.offset += SIZE;
 		n
 	}
 	fn next_u32(&mut self) -> u32 {
