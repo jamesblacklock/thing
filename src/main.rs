@@ -8,6 +8,8 @@ use std::{
 	thread,
 };
 
+#[macro_use]
+mod log;
 mod err;
 mod common;
 mod sha256;
@@ -57,9 +59,9 @@ impl Mempool {
 	fn add_tx(&mut self, id: Sha256, tx: Tx) {
 		self.pending.remove(&id);
 		if self.txs.contains_key(&id) {
-			println!("tx already in mempool: {}", id);
+			log_trace!("tx already in mempool: {}", id);
 		} else {
-			println!("add tx to mempool: {}", id);
+			log_debug!("add tx to mempool: {}", id);
 			self.txs.insert(id, tx);
 		}
 	}
@@ -72,6 +74,7 @@ impl Mempool {
 
 enum ApplicationMessage {
 	ShowMempool,
+	ShowTx(String),
 	Shutdown,
 }
 
@@ -96,11 +99,11 @@ impl Node {
 		let (send_to_parent, recv) = mpsc::channel();
 
 		for (i, addr) in addrs.iter().enumerate() {
-			println!("trying to connect to: {}", addr);
+			log_info!("trying to connect to: {}", addr);
 			let writer = match TcpStream::connect(addr.clone()) {
 				Ok(stream) => stream,
 				Err(e) => {
-					println!("failed to connect to peer: {}: {}", addr, e.to_string());
+					log_error!("failed to connect to peer: {}: {}", addr, e.to_string());
 					continue;
 				}
 			};
@@ -124,14 +127,14 @@ impl Node {
 				config: Config::default(),
 			});
 
-			println!("Connected to: {}", addr);
+			log_info!("Connected to: {}", addr);
 		}
 
 		if peers.len() == 0 {
 			return Err(Err::NetworkError("no peers connected!".to_owned()));
 		}
 
-		println!("{} peers conntected.", peers.len());
+		log_debug!("{} peers conntected.", peers.len());
 		
 		Ok(Node {
 			peers,
@@ -151,7 +154,7 @@ impl Node {
 			Payload::Inv(inv) => self.handle_inv_message(peer_index, inv),
 			Payload::Tx(id, tx) => self.handle_tx_message(peer_index, id, tx),
 			p => {
-				println!("peer {}: {}: no response implemented\n", peer_index, p.name());
+				log_debug!("peer {}: {}: no response implemented\n", peer_index, p.name());
 				Ok(())
 			},
 		}
@@ -189,7 +192,7 @@ impl Node {
 	fn handle_feefilter_message(&mut self, peer_index: usize, feefilter: FeeFilter) -> Result<()> {
 		if let Some(peer) = self.peers.get_mut(&peer_index) {
 			peer.config.feerate = feefilter.feerate();
-			println!("SET PARAM: feerate = {}\n", peer.config.feerate);
+			log_debug!("SET PARAM: feerate = {}\n", peer.config.feerate);
 		}
 		Ok(())
 	}
@@ -198,7 +201,7 @@ impl Node {
 		if let Some(peer) = self.peers.get_mut(&peer_index) {
 			if !peer.handshake_complete {
 				peer.config.wxtxid = true;
-				println!("SET PARAM: wxtxid = true\n");
+				log_debug!("SET PARAM: wxtxid = true\n");
 			}
 		}
 		Ok(())
@@ -208,7 +211,7 @@ impl Node {
 		if let Some(peer) = self.peers.get_mut(&peer_index) {
 			if !peer.handshake_complete {
 				peer.config.addrv2 = true;
-				println!("SET PARAM: addrv2 = true\n");
+				log_debug!("SET PARAM: addrv2 = true\n");
 			}
 		}
 		Ok(())
@@ -250,7 +253,7 @@ impl Node {
 	pub fn run(mut self) -> Result<()> {
 		for (i, peer) in self.peers.iter_mut() {
 			if let Err(e) = peer.writer.send(Message::version(peer.addr.clone())) {
-				println!("peer {}: error: {}", i, e);
+				log_error!("peer {}: error: {}", i, e);
 			}
 		}
 		
@@ -259,7 +262,7 @@ impl Node {
 			'outer: loop {
 				while let Ok((i, m)) = self.recv.try_recv() {
 					if let Err(e) = self.handle_message(i, m) {
-						println!("{}", e);
+						log_error!("{}", e);
 					}
 				}
 				while let Ok(m) = recv.try_recv() {
@@ -269,10 +272,18 @@ impl Node {
 							break 'outer;
 						},
 						ApplicationMessage::ShowMempool => {
-							println!("{}", JsonValue::object(
-								self.mempool.txs.iter().map(|(id, tx)| {
-									(format!("{}", id), tx.into_json())
-								})));
+							for id in self.mempool.txs.keys() {
+								println!("{}", id);
+							}
+						},
+						ApplicationMessage::ShowTx(id) => {
+							if let Ok(id) = Sha256::try_from(id.as_str()) {
+								if self.mempool.txs.contains_key(&id) {
+									println!("{}", self.mempool.txs[&id].into_json());
+									continue 'outer;
+								}
+							}
+							println!("no tx found");
 						},
 					}
 				}
@@ -286,15 +297,25 @@ impl Node {
 		loop {
 			let mut buf = String::new();
 			stdin.read_line(&mut buf).unwrap();
-			match buf.trim() {
-				"exit" => {
-					send.send(ApplicationMessage::Shutdown).unwrap();
-					break;
-				},
-				"mempool" => {
-					send.send(ApplicationMessage::ShowMempool).unwrap();
+			let tok: Vec<_> = buf.split_ascii_whitespace().collect();
+			if tok.len() == 1 {
+				match tok[0] {
+					"exit" => {
+						send.send(ApplicationMessage::Shutdown).unwrap();
+						break;
+					},
+					"mempool" => {
+						send.send(ApplicationMessage::ShowMempool).unwrap();
+					}
+					_ => {},
 				}
-				_ => {},
+			} else if tok.len() == 2 {
+				match tok[0] {
+					"tx" => {
+						send.send(ApplicationMessage::ShowTx(tok[1].into())).unwrap();
+					},
+					_ => {}
+				}
 			}
 		}
 

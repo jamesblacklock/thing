@@ -21,7 +21,7 @@ pub trait Peer {
 
 impl Peer for TcpStream {
 	fn send(&mut self, m: Message) -> Result<()> {
-		println!("SENT:\n{}\n", m);
+		log_trace!("SENT:\n{}\n", m);
 		m.serialize(self)
 	}
 
@@ -34,7 +34,7 @@ impl Peer for TcpStream {
 			},
 			Ok(_) => {
 				let m = Message::deserialize(self)?;
-				println!("RECEIVED:\n{}\n", m);
+				log_trace!("RECEIVED:\n{}\n", m);
 				return Ok(m)
 			},
 			Err(e) => {

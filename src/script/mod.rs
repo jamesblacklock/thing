@@ -16,9 +16,9 @@ pub struct ScriptIterator<'a> {
 impl <'a> ScriptIterator<'a> {
 	fn check_size(&self, size: usize) -> usize {
 		if self.offset + size > self.script.len() {
-			println!("script error: specified data size ({}) exceeds script length (offset={}, size={})",
+			log_error!("script error: specified data size ({}) exceeds script length (offset={}, size={})",
 				size, self.offset, self.script.len());
-			println!("data size truncated.");
+			log_error!("data size truncated.");
 			self.script.len() - self.offset
 		} else {
 			size
