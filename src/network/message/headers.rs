@@ -5,7 +5,7 @@ use std::{
 use crate::{
 	err::*,
 	json::JsonValue,
-    sha256::*,
+	sha256::*,
 };
 
 use crate::common::{
@@ -26,73 +26,73 @@ use super::{
 
 #[derive(Clone)]
 pub struct Header {
-    pub version: i32,
-    pub prev_block: Sha256,
-    pub merkle_root: Sha256,
-    pub timestamp: u32,
-    pub bits: u32,
-    pub nonce: u32,
-    pub tx_count: usize,
+	pub version: i32,
+	pub prev_block: Sha256,
+	pub merkle_root: Sha256,
+	pub timestamp: u32,
+	pub bits: u32,
+	pub nonce: u32,
+	pub tx_count: usize,
 }
 
 impl Header {
 	pub fn into_json(&self) -> JsonValue {
 		JsonValue::object([
-            ("version", JsonValue::number(self.version)),
-            ("prev_block", JsonValue::string(format!("{}", self.prev_block))),
-            ("merkle_root", JsonValue::string(format!("{}", self.merkle_root))),
-            ("timestamp", JsonValue::number(self.timestamp)),
-            ("bits", JsonValue::number(self.bits)),
-            ("nonce", JsonValue::number(self.nonce)),
-        ])
+			("version", JsonValue::number(self.version)),
+			("prev_block", JsonValue::string(format!("{}", self.prev_block))),
+			("merkle_root", JsonValue::string(format!("{}", self.merkle_root))),
+			("timestamp", JsonValue::number(self.timestamp)),
+			("bits", JsonValue::number(self.bits)),
+			("nonce", JsonValue::number(self.nonce)),
+		])
 	}
 
-    pub fn tx_count(&self) -> usize {
-        self.tx_count
-    }
+	pub fn tx_count(&self) -> usize {
+		self.tx_count
+	}
 
-    pub fn compute_hash(&self) -> Sha256 {
-        let mut buf = Vec::new();
-        self.serialize_without_tx_count(&mut buf).unwrap();
-        compute_double_sha256(&*buf)
-    }
+	pub fn compute_hash(&self) -> Sha256 {
+		let mut buf = Vec::new();
+		self.serialize_without_tx_count(&mut buf).unwrap();
+		compute_double_sha256(&*buf)
+	}
 
-    fn serialize_without_tx_count(&self, stream: &mut dyn Write) -> Result<()> {
-        write_i32(stream, self.version)?;
-        write_sha256(stream, &self.prev_block)?;
-        write_sha256(stream, &self.merkle_root)?;
-        write_u32(stream, self.timestamp)?;
-        write_u32(stream, self.bits)?;
-        write_u32(stream, self.nonce)
+	fn serialize_without_tx_count(&self, stream: &mut dyn Write) -> Result<()> {
+		write_i32(stream, self.version)?;
+		write_sha256(stream, &self.prev_block)?;
+		write_sha256(stream, &self.merkle_root)?;
+		write_u32(stream, self.timestamp)?;
+		write_u32(stream, self.bits)?;
+		write_u32(stream, self.nonce)
 	}
 }
 
 impl Deserialize for Header {
 	fn deserialize(stream: &mut dyn Read) -> Result<Header> {
-        let version = read_i32(stream)?;
-        let prev_block = read_sha256(stream)?;
-        let merkle_root = read_sha256(stream)?;
-        let timestamp = read_u32(stream)?;
-        let bits = read_u32(stream)?;
-        let nonce = read_u32(stream)?;
-        let tx_count = read_var_int(stream)? as usize;
+		let version = read_i32(stream)?;
+		let prev_block = read_sha256(stream)?;
+		let merkle_root = read_sha256(stream)?;
+		let timestamp = read_u32(stream)?;
+		let bits = read_u32(stream)?;
+		let nonce = read_u32(stream)?;
+		let tx_count = read_var_int(stream)? as usize;
 
 		Ok(Header { 
-            version,
-            prev_block,
-            merkle_root,
-            timestamp,
-            bits,
-            nonce,
-            tx_count,
-        })
+			version,
+			prev_block,
+			merkle_root,
+			timestamp,
+			bits,
+			nonce,
+			tx_count,
+		})
 	}
 }
 
 impl Serialize for Header {
 	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
-        self.serialize_without_tx_count(stream)?;
-        write_var_int(stream, self.tx_count as u64)
+		self.serialize_without_tx_count(stream)?;
+		write_var_int(stream, self.tx_count as u64)
 	}
 }
 
@@ -114,20 +114,20 @@ impl Headers {
 impl Deserialize for Headers {
 	fn deserialize(stream: &mut dyn Read) -> Result<Headers> {
 		let count = read_var_int(stream)? as usize;
-        let mut headers = Vec::new();
-        for _ in 0..count {
-            headers.push(Header::deserialize(stream)?);
-        }
-        Ok(Headers(headers))
+		let mut headers = Vec::new();
+		for _ in 0..count {
+			headers.push(Header::deserialize(stream)?);
+		}
+		Ok(Headers(headers))
 	}
 }
 
 impl Serialize for Headers {
 	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
 		write_var_int(stream, self.0.len() as u64)?;
-        for header in self.0.iter() {
-            header.serialize(stream)?;
-        }
-        Ok(())
+		for header in self.0.iter() {
+			header.serialize(stream)?;
+		}
+		Ok(())
 	}
 }

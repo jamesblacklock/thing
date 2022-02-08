@@ -30,11 +30,13 @@ pub struct GetHeaders {
 }
 
 impl GetHeaders {
-	// pub fn new() -> Self {
-	// 	GetHeaders {
-	// 		nonce: rand::random(),
-	// 	}
-	// }
+	pub fn new(hash: Sha256) -> Self {
+		GetHeaders {
+			version: 1,
+            hashes: vec![hash],
+            hash_stop: None,
+		}
+	}
 
 	pub fn into_json(&self) -> JsonValue {
         let hash_stop = if let Some(hash_stop) = self.hash_stop {

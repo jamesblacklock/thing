@@ -214,7 +214,7 @@ pub enum Payload {
 	GetHeaders(GetHeaders),
 	Tx(Sha256, Tx),
 	Block,
-	Headers,
+	Headers(Headers),
 	GetAddr,
 	MemPool,
 	CheckOrder,
@@ -251,7 +251,7 @@ impl Payload {
 			Payload::GetHeaders(_) => "getheaders",
 			Payload::Tx(_, _) => "tx",
 			Payload::Block => "block",
-			Payload::Headers => "headers",
+			Payload::Headers(_) => "headers",
 			Payload::GetAddr => "getaddr",
 			Payload::MemPool => "mempool",
 			Payload::CheckOrder => "checkorder",
@@ -278,6 +278,7 @@ impl Payload {
 			Payload::Addr(x) => x.into_json(),
 			Payload::Inv(x) => x.into_json(),
 			Payload::GetData(x) => x.into_json(),
+			Payload::GetHeaders(x) => x.into_json(),
 			Payload::Tx(_, x) => x.into_json(),
 			Payload::Ping(x) => x.into_json(),
 			Payload::Pong(x) => x.into_json(),
@@ -332,6 +333,13 @@ impl Message {
 		}
 	}
 	
+	pub fn getheaders(last_hash: Sha256) -> Self {
+		Message {
+			network: Network::Main,
+			payload: Payload::GetHeaders(GetHeaders::new(last_hash)),
+		}
+	}
+
 	pub fn getdata(inv: Vec<InvItem>) -> Self {
 		Message {
 			network: Network::Main,
@@ -401,36 +409,37 @@ impl Deserialize for Message {
 			return Err(Err::NetworkError(format!("checksum failure: expected {}, found {}", real_checksum, checksum)));
 		}
 
+		let payload_stream = &mut &*payload_bytes as &mut dyn Read;
 		let payload = match name.as_str() {
-			"version" => Payload::Version(Version::deserialize(&mut &*payload_bytes)?),
+			"version" => Payload::Version(Version::deserialize(payload_stream)?),
 			"verack" => Payload::Verack,
 			"wtxidrelay" => Payload::WTxIdRelay,
 			"sendaddrv2" => Payload::SendAddrV2,
 			"sendheaders" => Payload::SendHeaders,
-			"addr" => Payload::Addr(Addr::deserialize(&mut &*payload_bytes)?),
-			"inv" => Payload::Inv(Inv::deserialize(&mut &*payload_bytes)?),
-			"getdata" => Payload::GetData(GetData::deserialize(&mut &*payload_bytes)?),
+			"addr" => Payload::Addr(Addr::deserialize(payload_stream)?),
+			"inv" => Payload::Inv(Inv::deserialize(payload_stream)?),
+			"getdata" => Payload::GetData(GetData::deserialize(payload_stream)?),
 			"notfound" => Payload::NotFound,
 			"getblocks" => Payload::GetBlocks,
-			"getheaders" => Payload::GetHeaders(GetHeaders::deserialize(&mut &*payload_bytes)?),
-			"tx" => Payload::Tx(sha256, Tx::deserialize(&mut &*payload_bytes)?),
+			"getheaders" => Payload::GetHeaders(GetHeaders::deserialize(payload_stream)?),
+			"tx" => Payload::Tx(sha256, Tx::deserialize(payload_stream)?),
 			"block" => Payload::Block,
-			"headers" => Payload::Headers,
+			"headers" => Payload::Headers(Headers::deserialize(payload_stream)?),
 			"getaddr" => Payload::GetAddr,
 			"mempool" => Payload::MemPool,
 			"checkorder" => Payload::CheckOrder,
 			"submitorder" => Payload::SubmitOrder,
 			"reply" => Payload::Reply,
-			"ping" => Payload::Ping(Ping::deserialize(&mut &*payload_bytes)?),
-			"pong" => Payload::Pong(Pong::deserialize(&mut &*payload_bytes)?),
+			"ping" => Payload::Ping(Ping::deserialize(payload_stream)?),
+			"pong" => Payload::Pong(Pong::deserialize(payload_stream)?),
 			"reject" => Payload::Reject,
 			"filterload" => Payload::FilterLoad,
 			"filteradd" => Payload::FilterAdd,
 			"filterclear" => Payload::FilterClear,
 			"merkleblock" => Payload::MerkleBlock,
 			"alert" => Payload::Alert,
-			"feefilter" => Payload::FeeFilter(FeeFilter::deserialize(&mut &*payload_bytes)?),
-			"sendcmpct" => Payload::SendCmpct(SendCmpct::deserialize(&mut &*payload_bytes)?),
+			"feefilter" => Payload::FeeFilter(FeeFilter::deserialize(payload_stream)?),
+			"sendcmpct" => Payload::SendCmpct(SendCmpct::deserialize(payload_stream)?),
 			"cmpctblock" => Payload::CmpctBlock,
 			"getblocktxn" => Payload::GetBlockTxn,
 			"blocktxn" => Payload::BlockTxn,

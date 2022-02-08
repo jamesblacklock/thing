@@ -32,6 +32,8 @@ use network::{
 		Tx,
 		FeeFilter,
 		Block,
+		Headers,
+		Header,
 	}
 };
 
@@ -147,15 +149,16 @@ impl Node {
 
 	fn handle_message(&mut self, peer_index: usize, m: Message) -> Result<()> {
 		match m.take_payload() {
-			Payload::Version(payload) => self.handle_version_message(peer_index, payload),
-			Payload::Verack => self.handle_verack_message(peer_index),
+			Payload::Version(payload)  => self.handle_version_message(peer_index, payload),
+			Payload::Verack            => self.handle_verack_message(peer_index),
 			Payload::FeeFilter(filter) => self.handle_feefilter_message(peer_index, filter),
-			Payload::WTxIdRelay => self.handle_wtxidrelay_message(peer_index),
-			Payload::SendAddrV2 => self.handle_sendaddrv2_message(peer_index),
-			Payload::Ping(ping) => self.handle_ping_message(peer_index, ping),
-			Payload::Inv(inv) => self.handle_inv_message(peer_index, inv),
-			Payload::Tx(id, tx) => self.handle_tx_message(peer_index, id, tx),
-			Payload::SendHeaders => self.handle_sendheaders_message(peer_index),
+			Payload::WTxIdRelay        => self.handle_wtxidrelay_message(peer_index),
+			Payload::SendAddrV2        => self.handle_sendaddrv2_message(peer_index),
+			Payload::Ping(payload)     => self.handle_ping_message(peer_index, payload),
+			Payload::Inv(payload)      => self.handle_inv_message(peer_index, payload),
+			Payload::Tx(id, payload)   => self.handle_tx_message(peer_index, id, payload),
+			Payload::SendHeaders       => self.handle_sendheaders_message(peer_index),
+			Payload::Headers(payload)  => self.handle_headers_message(peer_index, payload),
 			p => {
 				log_debug!("peer {}: {}: no response implemented\n", peer_index, p.name());
 				Ok(())
@@ -225,6 +228,11 @@ impl Node {
 			peer.config.sendheaders = true;
 			log_debug!("SET PARAM: sendheaders = true\n");
 		}
+		Ok(())
+	}
+
+	fn handle_headers_message(&mut self, peer_index: usize, headers: Headers) -> Result<()> {
+		unimplemented!();
 		Ok(())
 	}
 
@@ -350,9 +358,7 @@ impl Node {
 }
 
 fn main() -> Result<()> {
-	// let addrs = std::env::args().skip(1).collect();
-	// let node = Node::new(addrs)?;
-	// node.run()
-	println!("{}", Block::genesis().into_json());
-	Ok(())
+	let addrs = std::env::args().skip(1).collect();
+	let node = Node::new(addrs)?;
+	node.run()
 }
