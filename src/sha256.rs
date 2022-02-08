@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::err::*;
+use crate::common::hex_bytes_le;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Sha256 {
@@ -13,8 +14,8 @@ impl Sha256 {
 	}
 
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		for i in self.digest {
-			write!(f, "{:08x}", u32::from_be_bytes(i.to_ne_bytes()))?;
+		for i in self.as_bytes().iter().rev() {
+			write!(f, "{:02x}", i)?;
 		}
 
 		Ok(())
@@ -38,37 +39,13 @@ impl std::convert::From<[u8; 32]> for Sha256 {
 	}
 }
 
-fn hexdigit_to_int(n: u8) -> Option<u8> {
-	const ZERO: u8 = '0' as u8;
-	const A_UPPER: u8 = 'A' as u8;
-	const A_LOWER: u8 = 'a' as u8;
-
-	if n - ZERO < 10 {
-		Some(n - ZERO)
-	} else if n - A_UPPER < 6 {
-		Some(n - A_UPPER + 10)
-	} else if n - A_LOWER < 6 {
-		Some(n - A_LOWER + 10)
-	} else {
-		None
-	}
-}
-
 impl std::convert::TryFrom<&str> for Sha256 {
 	type Error = crate::err::Err;
 
 	fn try_from(s: &str) -> crate::err::Result<Self> {
-		let bytes = s.as_bytes();
-		let mut digest = [0; 32];
-		let err = Err::ValueError(format!("the input `{}` cannot be converted to a sha256 hash", s));
-		if bytes.len() != 64 {
-			return Err(err)
-		}
-		for (i, chunk) in bytes.chunks_exact(2).enumerate() {
-			let a = hexdigit_to_int(chunk[0]).ok_or_else(|| err.clone())?;
-			let b = hexdigit_to_int(chunk[1]).ok_or_else(|| err.clone())?;
-			digest[i] = (a << 4) | b;
-		}
+		let digest = hex_bytes_le(s)?;
+		let digest: [u8; 32] = digest.as_slice()
+			.try_into().map_err(|e| Err::ValueError(format!("the input `{}` cannot be converted to sha256", s)))?;
 		Ok(Sha256::from(digest))
 	}
 }

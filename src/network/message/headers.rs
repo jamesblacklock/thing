@@ -5,7 +5,7 @@ use std::{
 use crate::{
 	err::*,
 	json::JsonValue,
-    sha256::Sha256,
+    sha256::*,
 };
 
 use crate::common::{
@@ -26,12 +26,13 @@ use super::{
 
 #[derive(Clone)]
 pub struct Header {
-    version: i32,
-    prev_block: Sha256,
-    merkle_root: Sha256,
-    timestamp: u32,
-    bits: u32,
-    nonce: u32,
+    pub version: i32,
+    pub prev_block: Sha256,
+    pub merkle_root: Sha256,
+    pub timestamp: u32,
+    pub bits: u32,
+    pub nonce: u32,
+    pub tx_count: usize,
 }
 
 impl Header {
@@ -45,6 +46,25 @@ impl Header {
             ("nonce", JsonValue::number(self.nonce)),
         ])
 	}
+
+    pub fn tx_count(&self) -> usize {
+        self.tx_count
+    }
+
+    pub fn compute_hash(&self) -> Sha256 {
+        let mut buf = Vec::new();
+        self.serialize_without_tx_count(&mut buf).unwrap();
+        compute_double_sha256(&*buf)
+    }
+
+    fn serialize_without_tx_count(&self, stream: &mut dyn Write) -> Result<()> {
+        write_i32(stream, self.version)?;
+        write_sha256(stream, &self.prev_block)?;
+        write_sha256(stream, &self.merkle_root)?;
+        write_u32(stream, self.timestamp)?;
+        write_u32(stream, self.bits)?;
+        write_u32(stream, self.nonce)
+	}
 }
 
 impl Deserialize for Header {
@@ -55,11 +75,7 @@ impl Deserialize for Header {
         let timestamp = read_u32(stream)?;
         let bits = read_u32(stream)?;
         let nonce = read_u32(stream)?;
-        let tx_count = read_var_int(stream)?;
-
-        if tx_count != 0 {
-            return Err(Err::ValueError("invalid block header: non-zero value in field `tx_count`".to_owned()));
-        }
+        let tx_count = read_var_int(stream)? as usize;
 
 		Ok(Header { 
             version,
@@ -68,19 +84,15 @@ impl Deserialize for Header {
             timestamp,
             bits,
             nonce,
+            tx_count,
         })
 	}
 }
 
 impl Serialize for Header {
 	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
-        write_i32(stream, self.version)?;
-        write_sha256(stream, &self.prev_block)?;
-        write_sha256(stream, &self.merkle_root)?;
-        write_u32(stream, self.timestamp)?;
-        write_u32(stream, self.bits)?;
-        write_u32(stream, self.nonce)?;
-        write_var_int(stream, 0)
+        self.serialize_without_tx_count(stream)?;
+        write_var_int(stream, self.tx_count as u64)
 	}
 }
 

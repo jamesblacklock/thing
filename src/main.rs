@@ -31,6 +31,7 @@ use network::{
 		InvType,
 		Tx,
 		FeeFilter,
+		Block,
 	}
 };
 
@@ -349,7 +350,9 @@ impl Node {
 }
 
 fn main() -> Result<()> {
-	let addrs = std::env::args().skip(1).collect();
-	let node = Node::new(addrs)?;
-	node.run()
+	// let addrs = std::env::args().skip(1).collect();
+	// let node = Node::new(addrs)?;
+	// node.run()
+	println!("{}", Block::genesis().into_json());
+	Ok(())
 }

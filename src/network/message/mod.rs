@@ -39,6 +39,7 @@ mod inv;
 mod tx;
 mod getheaders;
 mod headers;
+mod block;
 
 pub use {
     version::*,
@@ -51,6 +52,7 @@ pub use {
 	tx::*,
 	getheaders::*,
 	headers::*,
+	block::*,
 };
 
 #[derive(Clone)]

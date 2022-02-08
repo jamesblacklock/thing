@@ -6,6 +6,7 @@ use std::{
 mod op;
 pub use op::*;
 
+#[derive(Clone)]
 pub struct Script(Vec<u8>);
 
 pub struct ScriptIterator<'a> {
@@ -67,6 +68,11 @@ impl Script {
 
 	pub fn as_bytes(&self) -> &[u8] {
 		&*self.0
+	}
+
+	pub fn append(&mut self, op: Op) -> &mut Self {
+		op.append_to(&mut self.0);
+		self
 	}
 }
 

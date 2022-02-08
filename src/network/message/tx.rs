@@ -5,7 +5,7 @@ use std::{
 use crate::{
 	err::*,
 	json::JsonValue,
-	sha256::Sha256,
+	sha256::*,
 	script::*,
 };
 
@@ -22,6 +22,7 @@ use crate::common::{
 	write_sha256,
 	write_var_int,
 	write_buf_exact,
+	serialize,
 };
 
 use super::{
@@ -30,7 +31,7 @@ use super::{
 };
 
 #[derive(Clone, Copy)]
-enum AbsoluteLockTime {
+pub enum AbsoluteLockTime {
 	BlockNumber(u32),
 	Timestamp(u32),
 	None,
@@ -104,13 +105,16 @@ impl From<u32> for RelativeLockTime {
 	}
 }
 
-struct Input {
-	tx_hash: Sha256,
-	index: u32,
-	unlock: Script,
-	witness: Vec<Vec<u8>>,
-	sequence: u32,
+#[derive(Clone)]
+pub struct TxInput {
+	pub tx_hash: Sha256,
+	pub index: u32,
+	pub unlock: Script,
+	pub witness: Vec<Vec<u8>>,
+	pub sequence: u32,
 }
+
+type Input = TxInput;
 
 impl Input {
 	fn into_json(&self) -> JsonValue {
@@ -125,6 +129,18 @@ impl Input {
 
 	fn rel_lock_time(&self) -> RelativeLockTime {
 		RelativeLockTime::from(self.sequence)
+	}
+}
+
+impl Default for Input {
+	fn default() -> Self {
+		Input {
+			tx_hash: Sha256::default(),
+			index: 0,
+			unlock: Script::new(Vec::new()),
+			witness: Vec::new(),
+			sequence: 0xffff_ffff,
+		}
 	}
 }
 
@@ -157,10 +173,13 @@ impl Serialize for Input {
 	}
 }
 
-struct Output {
-	value: u64,
-	lock: Script,
+#[derive(Clone)]
+pub struct TxOutput {
+	pub value: u64,
+	pub lock: Script,
 }
+
+type Output = TxOutput;
 
 impl Output {
 	fn into_json(&self) -> JsonValue {
@@ -168,6 +187,15 @@ impl Output {
 			("value", JsonValue::number(self.value)),
 			("lock", JsonValue::string(format!("{}", self.lock))),
 		])
+	}
+}
+
+impl Default for Output {
+	fn default() -> Self {
+		Output {
+			value: 0,
+			lock: Script::new(Vec::new()),
+		}
 	}
 }
 
@@ -193,12 +221,13 @@ impl Serialize for Output {
 	}
 }
 
+#[derive(Clone)]
 pub struct Tx {
-	version: u32,
-	segwit: bool,
-	inputs: Vec<Input>,
-	outputs: Vec<Output>,
-	abs_lock_time: AbsoluteLockTime,
+	pub version: u32,
+	pub segwit: bool,
+	pub inputs: Vec<TxInput>,
+	pub outputs: Vec<TxOutput>,
+	pub abs_lock_time: AbsoluteLockTime,
 }
 
 impl Tx {
@@ -210,6 +239,27 @@ impl Tx {
 			("outputs", JsonValue::array(self.outputs.iter().map(|e| e.into_json()))),
 			("abs_lock_time", self.abs_lock_time.to_json()),
 		])
+	}
+
+	pub fn compute_merkle_root(txs: &[Tx]) -> Sha256 {
+		assert!(txs.len() > 0);
+		if txs.len() == 1 {
+			compute_double_sha256(&*serialize(&txs[0]).unwrap())
+		} else {
+			unimplemented!()
+		}
+	}
+}
+
+impl Default for Tx {
+	fn default() -> Self {
+		Tx {
+			version: 1,
+			segwit: false,
+			inputs: Vec::new(),
+			outputs: Vec::new(),
+			abs_lock_time: AbsoluteLockTime::None,
+		}
 	}
 }
 

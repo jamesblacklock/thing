@@ -1,6 +1,115 @@
 use std::io::{Read, Write};
 use crate::err::*;
-use crate::sha256::Sha256;
+use crate::sha256::*;
+use crate::network::Serialize;
+
+pub const SAT_PER_COIN: u64 = 100_000_000;
+
+pub fn serialize<T: Serialize>(item: &T) -> Result<Vec<u8>> {
+	let mut bytes = Vec::new();
+	item.serialize(&mut bytes)?;
+	Ok(bytes)
+}
+
+struct HexBytes<'a> {
+	slice: &'a [u8],
+	offset: usize,
+}
+
+impl <'a> HexBytes<'a> {
+	fn new(slice: &'a [u8]) -> Self {
+		HexBytes {
+			slice,
+			offset: 0,
+		}
+	}
+}
+
+impl <'a> Iterator for HexBytes<'a> {
+	type Item = (u8, u8);
+	fn next(&mut self) -> Option<Self::Item> {
+		if self.offset >= self.slice.len() {
+			None
+		} else {
+			self.offset += 2;
+			Some((self.slice[self.offset - 2], self.slice[self.offset - 1]))
+		}
+	}
+}
+
+struct HexBytesRev<'a> {
+	slice: &'a [u8],
+	offset: usize,
+}
+
+impl <'a> HexBytesRev<'a> {
+	fn new(slice: &'a [u8]) -> Self {
+		HexBytesRev {
+			slice,
+			offset: slice.len(),
+		}
+	}
+}
+
+impl <'a> Iterator for HexBytesRev<'a> {
+	type Item = (u8, u8);
+	fn next(&mut self) -> Option<Self::Item> {
+		if self.offset == 0 {
+			None
+		} else {
+			self.offset -= 2;
+			Some((self.slice[self.offset], self.slice[self.offset + 1]))
+		}
+	}
+}
+
+pub fn hex_bytes(s: &str) -> Result<Vec<u8>> {
+	let hex = s.as_bytes();
+	if hex.len() % 2 != 0 {
+		return Err(Err::ValueError(format!("the input cannot be converted to bytes")));
+	}
+	hex_bytes_impl(HexBytes::new(hex), vec![0; hex.len()/2])
+}
+
+pub fn hex_bytes_le(s: &str) -> Result<Vec<u8>> {
+	let hex = s.as_bytes();
+	if hex.len() % 2 != 0 {
+		return Err(Err::ValueError(format!("the input cannot be converted to bytes")));
+	}
+	hex_bytes_impl(HexBytesRev::new(hex), vec![0; hex.len()/2])
+}
+
+fn hex_bytes_impl<T: Iterator<Item=(u8, u8)>>(hex: T, mut bytes: Vec<u8>) -> Result<Vec<u8>> {
+	fn hexdigit(n: u8) -> Option<u8> {
+		const ZERO: u8 = '0' as u8;
+		const A_UPPER: u8 = 'A' as u8;
+		const A_LOWER: u8 = 'a' as u8;
+	
+		if n - ZERO < 10 {
+			Some(n - ZERO)
+		} else if n - A_UPPER < 6 {
+			Some(n - A_UPPER + 10)
+		} else if n - A_LOWER < 6 {
+			Some(n - A_LOWER + 10)
+		} else {
+			None
+		}
+	}
+	
+	let mut i = 0;
+	for (a, b) in hex {
+		let a = hexdigit(a).ok_or_else(|| Err::ValueError(format!("the input cannot be converted to bytes")))?;
+		let b = hexdigit(b).ok_or_else(|| Err::ValueError(format!("the input cannot be converted to bytes")))?;
+		bytes[i] = (a << 4) | b;
+		i += 1;
+	}
+	
+	Ok(bytes)
+}
+
+// pub fn hash<T: Serialize>(item: &T) -> Result<Sha256> {
+// 	Ok(compute_double_sha256(&*serialize(item)?))
+// }
 
 pub fn now() -> u64 {
 	std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()

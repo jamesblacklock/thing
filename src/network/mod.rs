@@ -6,11 +6,11 @@ pub mod message;
 
 use message::Message;
 
-trait Serialize {
+pub trait Serialize {
 	fn serialize(&self, stream: &mut dyn Write) -> Result<()>;
 }
 
-trait Deserialize: Sized {
+pub trait Deserialize: Sized {
 	fn deserialize(stream: &mut dyn Read) -> Result<Self>;
 }
 
