@@ -45,7 +45,7 @@ impl std::convert::TryFrom<&str> for Sha256 {
 	fn try_from(s: &str) -> crate::err::Result<Self> {
 		let digest = hex_bytes_le(s)?;
 		let digest: [u8; 32] = digest.as_slice()
-			.try_into().map_err(|e| Err::ValueError(format!("the input `{}` cannot be converted to sha256", s)))?;
+			.try_into().map_err(|_| Err::ValueError(format!("the input `{}` cannot be converted to sha256", s)))?;
 		Ok(Sha256::from(digest))
 	}
 }

@@ -102,7 +102,7 @@ pub struct Headers(Vec<Header>);
 impl Headers {
 	// pub fn new() -> Self {
 	// 	Headers {
-	// 		nonce: rand::random(),
+	// 		???
 	// 	}
 	// }
 

@@ -16,26 +16,25 @@ pub trait Deserialize: Sized {
 
 pub trait Peer {
 	fn send(&mut self, message: Message) -> Result<()>;
-	fn receive(&mut self) -> Result<Message>;
+	fn receive(&mut self) -> Result<Option<Message>>;
 }
 
 impl Peer for TcpStream {
 	fn send(&mut self, m: Message) -> Result<()> {
-		log_trace!("SENT:\n{}\n", m);
+		// log_trace!("SENT:\n{}\n", m);
+		log_trace!("SENT: {}", m.payload().name());
 		m.serialize(self)
 	}
 
-	fn receive(&mut self) -> Result<Message> {
+	fn receive(&mut self) -> Result<Option<Message>> {
 		match self.peek(&mut [0]) {
 			Ok(0) => {
-				// AFAIK this should not happen because the `recv` syscall should block until data is available.
-				// If the socket connection is closed, `peek` will result in an error, not a zero result.
-				unreachable!();
+				Ok(None)
 			},
 			Ok(_) => {
 				let m = Message::deserialize(self)?;
-				log_trace!("RECEIVED:\n{}\n", m);
-				return Ok(m)
+				log_trace!("RECEIVED:\n{}", m);
+				return Ok(Some(m))
 			},
 			Err(e) => {
 				return Err(Err::NetworkError(e.to_string()));

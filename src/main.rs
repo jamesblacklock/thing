@@ -33,7 +33,6 @@ use network::{
 		FeeFilter,
 		Block,
 		Headers,
-		Header,
 	}
 };
 
@@ -116,8 +115,7 @@ impl Node {
 			let send_to_parent = send_to_parent.clone();
 			// let handle = 
 			thread::spawn(move || {
-				loop {
-					let message = reader.receive().unwrap();
+				while let Some(message) = reader.receive().unwrap() {
 					send_to_parent.send((i, message)).unwrap();
 				}
 			});
@@ -171,6 +169,7 @@ impl Node {
 			if !peer.handshake_complete && peer.info.is_none() {
 				peer.info = Some(payload);
 				peer.writer.send(Message::verack())?;
+				peer.writer.send(Message::sendheaders())?;
 			}
 		}
 		Ok(())
@@ -190,6 +189,9 @@ impl Node {
 					return Err(Err::NetworkError("failed to complete handshake (missing version message)".to_owned()));
 				}
 				peer.handshake_complete = true;
+
+				let genesis_hash = Block::genesis().header.compute_hash();
+				peer.writer.send(Message::getheaders(genesis_hash))?;
 			}
 		}
 		Ok(())
@@ -231,8 +233,7 @@ impl Node {
 		Ok(())
 	}
 
-	fn handle_headers_message(&mut self, peer_index: usize, headers: Headers) -> Result<()> {
-		unimplemented!();
+	fn handle_headers_message(&mut self, _peer_index: usize, _headers: Headers) -> Result<()> {
 		Ok(())
 	}
 
@@ -245,7 +246,9 @@ impl Node {
 						items.push(item.clone());
 					}
 				},
-				// InvType::Block => {},
+				// InvType::Block => {
+				// 	items.push(item.clone());
+				// },
 				// InvType::FilteredBlock => {},
 				// InvType::CmpctBlock => {},
 				// InvType::WitnessTx => {},

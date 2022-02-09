@@ -30,6 +30,9 @@ use super::{
 	Serialize,
 };
 
+pub const PROTOCOL_VERSION: i32 = 70016;
+pub const BIP_0037: i32         = 70001;
+
 // mod Services {
 // 	const NODE_NETWORK: u64         = 0x0001;
 // 	const NODE_GETUTXO: u64         = 0x0002;
@@ -56,7 +59,7 @@ pub struct Version {
 impl Version {
 	pub fn new<A: ToSocketAddrs>(addr: A) -> Self {
 		Version {
-			version: 70016,
+			version: PROTOCOL_VERSION,
 			services: 0,
 			timestamp: now() as i64,
 			addr_recv: ShortNetAddr::from(&addr),
@@ -93,8 +96,12 @@ impl Deserialize for Version {
 		let nonce = read_u64(stream)?;
 		let user_agent = read_var_str(stream)?;
 		let start_height = read_u32(stream)?;
-		let relay = read_bool(stream)?;
-
+		let relay = if version > BIP_0037 {
+			read_bool(stream)?
+		} else {
+			true
+		};
+		
 		Ok(Version {
 			version,
 			services,
@@ -119,6 +126,9 @@ impl Serialize for Version {
 		write_u64(stream, self.nonce)?;
 		write_var_str(stream, &self.user_agent)?;
 		write_u32(stream, self.start_height)?;
-		write_bool(stream, self.relay)
+		if self.version > BIP_0037 {
+			write_bool(stream, self.relay)?;
+		}
+		Ok(())
 	}
 }

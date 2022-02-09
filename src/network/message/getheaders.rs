@@ -9,10 +9,10 @@ use crate::{
 };
 
 use crate::common::{
-	read_u32,
+	read_i32,
 	read_var_int,
     read_sha256,
-	write_u32,
+	write_i32,
 	write_var_int,
     write_sha256,
 };
@@ -20,11 +20,12 @@ use crate::common::{
 use super::{
 	Deserialize,
 	Serialize,
+    version::PROTOCOL_VERSION,
 };
 
 #[derive(Clone)]
 pub struct GetHeaders {
-    version: u32,
+    version: i32,
     hashes: Vec<Sha256>,
     hash_stop: Option<Sha256>,
 }
@@ -32,7 +33,7 @@ pub struct GetHeaders {
 impl GetHeaders {
 	pub fn new(hash: Sha256) -> Self {
 		GetHeaders {
-			version: 1,
+			version: PROTOCOL_VERSION,
             hashes: vec![hash],
             hash_stop: None,
 		}
@@ -55,7 +56,7 @@ impl GetHeaders {
 
 impl Deserialize for GetHeaders {
 	fn deserialize(stream: &mut dyn Read) -> Result<GetHeaders> {
-		let version = read_u32(stream)?;
+		let version = read_i32(stream)?;
 		let hash_count = read_var_int(stream)?;
         let mut hashes = Vec::new();
         for _ in 0..hash_count {
@@ -80,7 +81,7 @@ impl Deserialize for GetHeaders {
 
 impl Serialize for GetHeaders {
 	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
-        write_u32(stream, self.version)?;
+        write_i32(stream, self.version)?;
 		write_var_int(stream, self.hashes.len() as u64)?;
         for hash in self.hashes.iter() {
             write_sha256(stream, &hash)?;

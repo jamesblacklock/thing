@@ -210,8 +210,8 @@ pub enum Payload {
 	Inv(Inv),
 	GetData(GetData),
 	NotFound,
-	GetBlocks,
 	GetHeaders(GetHeaders),
+	GetBlocks(GetHeaders),
 	Tx(Sha256, Tx),
 	Block,
 	Headers(Headers),
@@ -247,7 +247,7 @@ impl Payload {
 			Payload::Inv(_) => "inv",
 			Payload::GetData(_) => "getdata",
 			Payload::NotFound => "notfound",
-			Payload::GetBlocks => "getblocks",
+			Payload::GetBlocks(_) => "getblocks",
 			Payload::GetHeaders(_) => "getheaders",
 			Payload::Tx(_, _) => "tx",
 			Payload::Block => "block",
@@ -275,16 +275,37 @@ impl Payload {
 	fn into_json(&self) -> JsonValue {
 		match self {
 			Payload::Version(x) => x.into_json(),
+			Payload::Verack => JsonValue::null(),
+			Payload::WTxIdRelay => JsonValue::null(),
+			Payload::SendAddrV2 => JsonValue::null(),
+			Payload::SendHeaders => JsonValue::null(),
 			Payload::Addr(x) => x.into_json(),
 			Payload::Inv(x) => x.into_json(),
 			Payload::GetData(x) => x.into_json(),
+			Payload::NotFound => JsonValue::null(),
+			Payload::GetBlocks(x) => x.into_json(),
 			Payload::GetHeaders(x) => x.into_json(),
 			Payload::Tx(_, x) => x.into_json(),
+			Payload::Block => JsonValue::null(),
+			Payload::Headers(x) => x.into_json(),
+			Payload::GetAddr => JsonValue::null(),
+			Payload::MemPool => JsonValue::null(),
+			Payload::CheckOrder => JsonValue::null(),
+			Payload::SubmitOrder => JsonValue::null(),
+			Payload::Reply => JsonValue::null(),
 			Payload::Ping(x) => x.into_json(),
 			Payload::Pong(x) => x.into_json(),
+			Payload::Reject => JsonValue::null(),
+			Payload::FilterLoad => JsonValue::null(),
+			Payload::FilterAdd => JsonValue::null(),
+			Payload::FilterClear => JsonValue::null(),
+			Payload::MerkleBlock => JsonValue::null(),
+			Payload::Alert => JsonValue::null(),
 			Payload::FeeFilter(x) => x.into_json(),
 			Payload::SendCmpct(x) => x.into_json(),
-			_ => JsonValue::null(),
+			Payload::CmpctBlock => JsonValue::null(),
+			Payload::GetBlockTxn => JsonValue::null(),
+			Payload::BlockTxn => JsonValue::null(),
 		}
 	}
 }
@@ -293,15 +314,37 @@ impl Serialize for Payload {
 	fn serialize(&self, stream: &mut dyn Write) -> Result<()> {
 		match self {
 			Payload::Version(x) => x.serialize(stream),
+			Payload::Verack => Ok(()),
+			Payload::WTxIdRelay => Ok(()),
+			Payload::SendAddrV2 => Ok(()),
+			Payload::SendHeaders => Ok(()),
 			Payload::Addr(x) => x.serialize(stream),
-			Payload::GetData(x) => x.serialize(stream),
 			Payload::Inv(x) => x.serialize(stream),
+			Payload::GetData(x) => x.serialize(stream),
+			Payload::NotFound => Ok(()),
+			Payload::GetHeaders(x) => x.serialize(stream),
+			Payload::GetBlocks(x) => x.serialize(stream),
 			Payload::Tx(_, x) => x.serialize(stream),
+			Payload::Block => Ok(()),
+			Payload::Headers(x) => x.serialize(stream),
+			Payload::GetAddr => Ok(()),
+			Payload::MemPool => Ok(()),
+			Payload::CheckOrder => Ok(()),
+			Payload::SubmitOrder => Ok(()),
+			Payload::Reply => Ok(()),
 			Payload::Ping(x) => x.serialize(stream),
 			Payload::Pong(x) => x.serialize(stream),
+			Payload::Reject => Ok(()),
+			Payload::FilterLoad => Ok(()),
+			Payload::FilterAdd => Ok(()),
+			Payload::FilterClear => Ok(()),
+			Payload::MerkleBlock => Ok(()),
+			Payload::Alert => Ok(()),
 			Payload::FeeFilter(x) => x.serialize(stream),
 			Payload::SendCmpct(x) => x.serialize(stream),
-			_ => Ok(()),
+			Payload::CmpctBlock => Ok(()),
+			Payload::GetBlockTxn => Ok(()),
+			Payload::BlockTxn => Ok(()),
 		}
 	}
 }
@@ -337,6 +380,20 @@ impl Message {
 		Message {
 			network: Network::Main,
 			payload: Payload::GetHeaders(GetHeaders::new(last_hash)),
+		}
+	}
+	
+	pub fn getblocks(last_hash: Sha256) -> Self {
+		Message {
+			network: Network::Main,
+			payload: Payload::GetBlocks(GetHeaders::new(last_hash)),
+		}
+	}
+
+	pub fn sendheaders() -> Self {
+		Message {
+			network: Network::Main,
+			payload: Payload::SendHeaders,
 		}
 	}
 
@@ -420,7 +477,7 @@ impl Deserialize for Message {
 			"inv" => Payload::Inv(Inv::deserialize(payload_stream)?),
 			"getdata" => Payload::GetData(GetData::deserialize(payload_stream)?),
 			"notfound" => Payload::NotFound,
-			"getblocks" => Payload::GetBlocks,
+			"getblocks" => Payload::GetBlocks(GetHeaders::deserialize(payload_stream)?),
 			"getheaders" => Payload::GetHeaders(GetHeaders::deserialize(payload_stream)?),
 			"tx" => Payload::Tx(sha256, Tx::deserialize(payload_stream)?),
 			"block" => Payload::Block,
