@@ -376,17 +376,17 @@ impl Message {
 		}
 	}
 	
-	pub fn getheaders(last_hash: Sha256) -> Self {
+	pub fn getheaders(hashes: &[Sha256]) -> Self {
 		Message {
 			network: Network::Main,
-			payload: Payload::GetHeaders(GetHeaders::new(last_hash)),
+			payload: Payload::GetHeaders(GetHeaders::new(hashes)),
 		}
 	}
 	
-	pub fn getblocks(last_hash: Sha256) -> Self {
+	pub fn getblocks(hashes: &[Sha256]) -> Self {
 		Message {
 			network: Network::Main,
-			payload: Payload::GetBlocks(GetHeaders::new(last_hash)),
+			payload: Payload::GetBlocks(GetHeaders::new(hashes)),
 		}
 	}
 

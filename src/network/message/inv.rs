@@ -113,8 +113,8 @@ impl Inv {
 	// 	}
 	// }
 
-	pub fn items(&self) -> &[InvItem] {
-		&self.inv
+	pub fn iter(&self) -> std::slice::Iter<InvItem> {
+		self.inv.iter()
 	}
 
 	pub fn into_json(&self) -> JsonValue {

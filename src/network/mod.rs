@@ -33,7 +33,8 @@ impl Peer for TcpStream {
 			},
 			Ok(_) => {
 				let m = Message::deserialize(self)?;
-				log_trace!("RECEIVED:\n{}", m);
+				// log_trace!("RECEIVED:\n{}", m);
+				log_trace!("RECEIVED: {}", m.payload().name());
 				return Ok(Some(m))
 			},
 			Err(e) => {

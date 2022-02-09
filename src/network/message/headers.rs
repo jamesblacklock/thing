@@ -109,6 +109,10 @@ impl Headers {
 	pub fn into_json(&self) -> JsonValue {
 		JsonValue::array(self.0.iter().map(|e| e.into_json()))
 	}
+
+	pub fn iter(&self) -> std::slice::Iter<Header> {
+		self.0.iter()
+	}
 }
 
 impl Deserialize for Headers {

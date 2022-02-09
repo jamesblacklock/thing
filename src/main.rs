@@ -46,6 +46,18 @@ struct Config {
 	feerate: u64,
 }
 
+struct BlocksDB {
+	headers: Vec<Sha256>,
+}
+
+impl BlocksDB {
+	fn new() -> Self {
+		BlocksDB {
+			headers: vec![Block::genesis().header.compute_hash()],
+		}
+	}
+}
+
 struct Mempool {
 	pending: HashSet<Sha256>,
 	txs: HashMap<Sha256, Tx>,
@@ -77,6 +89,7 @@ impl Mempool {
 
 enum ApplicationMessage {
 	ShowMempool,
+	ShowHeaders,
 	ShowTx(String),
 	Shutdown,
 }
@@ -94,6 +107,7 @@ struct Node {
 	peers: HashMap<usize, PeerHandle>,
 	recv: Receiver<(usize, Message)>,
 	mempool: Mempool,
+	blocks: BlocksDB,
 }
 
 impl Node {
@@ -142,6 +156,7 @@ impl Node {
 			peers,
 			recv,
 			mempool: Mempool::new(),
+			blocks: BlocksDB::new(),
 		})
 	}
 
@@ -190,8 +205,7 @@ impl Node {
 				}
 				peer.handshake_complete = true;
 
-				let genesis_hash = Block::genesis().header.compute_hash();
-				peer.writer.send(Message::getheaders(genesis_hash))?;
+				peer.writer.send(Message::getheaders(&self.blocks.headers))?;
 			}
 		}
 		Ok(())
@@ -233,13 +247,25 @@ impl Node {
 		Ok(())
 	}
 
-	fn handle_headers_message(&mut self, _peer_index: usize, _headers: Headers) -> Result<()> {
+	fn handle_headers_message(&mut self, peer_index: usize, headers: Headers) -> Result<()> {
+		for header in headers.iter() {
+			let last = *self.blocks.headers.last().unwrap();
+			assert!(header.prev_block == last);
+			self.blocks.headers.push(header.compute_hash());
+		}
+
+		if let Some(peer) = self.peers.get_mut(&peer_index) {
+			let m = Message::getheaders(&self.blocks.headers);
+			// println!("{}", m);
+			peer.writer.send(m)?;
+		}
+
 		Ok(())
 	}
 
 	fn handle_inv_message(&mut self, peer_index: usize, inv: Inv) -> Result<()> {
 		let mut items = Vec::new();
-		for item in inv.items().iter() {
+		for item in inv.iter() {
 			match item.object_type {
 				InvType::Tx => {
 					if !self.mempool.contains(item.hash) {
@@ -302,6 +328,11 @@ impl Node {
 								println!("{}", id);
 							}
 						},
+						ApplicationMessage::ShowHeaders => {
+							for (i, hash) in self.blocks.headers.iter().enumerate() {
+								println!("{:010}: {}", i, hash);
+							}
+						},
 						ApplicationMessage::ShowTx(id) => {
 							let found = if let Ok(id) = Sha256::try_from(id.as_str()) {
 								if self.mempool.txs.contains_key(&id) {
@@ -342,6 +373,10 @@ impl Node {
 				},
 				["mempool"] => {
 					send_cmd.send(ApplicationMessage::ShowMempool).unwrap();
+					recv_cmd_done.recv().unwrap();
+				}
+				["headers"] => {
+					send_cmd.send(ApplicationMessage::ShowHeaders).unwrap();
 					recv_cmd_done.recv().unwrap();
 				}
 				["tx", id] => {

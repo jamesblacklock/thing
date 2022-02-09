@@ -31,10 +31,26 @@ pub struct GetHeaders {
 }
 
 impl GetHeaders {
-	pub fn new(hash: Sha256) -> Self {
+	pub fn new(hashes: &[Sha256]) -> Self {
+        let mut sparse_hashes = Vec::new();
+        let mut step = 1;
+        let mut offset = 1;
+        let mut count = 0;
+        let len = hashes.len();
+        while offset < hashes.len() {
+            sparse_hashes.push(hashes[len - offset].clone());
+            count += 1;
+            if count % 10 == 0 {
+                step *= 2;
+            }
+            offset += step;
+        }
+        
+        sparse_hashes.push(hashes[0].clone());
+
 		GetHeaders {
 			version: PROTOCOL_VERSION,
-            hashes: vec![hash],
+            hashes: sparse_hashes,
             hash_stop: None,
 		}
 	}
