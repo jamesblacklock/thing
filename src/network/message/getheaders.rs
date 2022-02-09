@@ -35,12 +35,10 @@ impl GetHeaders {
         let mut sparse_hashes = Vec::new();
         let mut step = 1;
         let mut offset = 1;
-        let mut count = 0;
         let len = hashes.len();
         while offset < hashes.len() {
             sparse_hashes.push(hashes[len - offset].clone());
-            count += 1;
-            if count % 10 == 0 {
+            if sparse_hashes.len() > 10 {
                 step *= 2;
             }
             offset += step;
