@@ -4,7 +4,7 @@ use std::{
 
 use crate::{
 	err::*,
-	json::JsonValue,
+	json::*,
 	sha256::*,
 	script::*,
 };
@@ -37,7 +37,7 @@ pub enum AbsoluteLockTime {
 	None,
 }
 
-impl AbsoluteLockTime {
+impl ToJson for AbsoluteLockTime {
 	fn to_json(&self) -> JsonValue {
 		match *self {
 			AbsoluteLockTime::BlockNumber(n) => JsonValue::object([("block", JsonValue::number(n))]),
@@ -76,7 +76,7 @@ enum RelativeLockTime {
 	None,
 }
 
-impl RelativeLockTime {
+impl ToJson for RelativeLockTime {
 	fn to_json(&self) -> JsonValue {
 		match *self {
 			RelativeLockTime::Blocks(n) => JsonValue::object([("blocks", JsonValue::number(n))]),
@@ -117,6 +117,13 @@ pub struct TxInput {
 type Input = TxInput;
 
 impl Input {
+
+	fn rel_lock_time(&self) -> RelativeLockTime {
+		RelativeLockTime::from(self.sequence)
+	}
+}
+
+impl ToJson for Input {
 	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("tx_hash", JsonValue::string(format!("{}", self.tx_hash))),
@@ -125,10 +132,6 @@ impl Input {
 			("witness", JsonValue::string(format!("{:?}", self.witness))),
 			("rel_lock_time", self.rel_lock_time().to_json()),
 		])
-	}
-
-	fn rel_lock_time(&self) -> RelativeLockTime {
-		RelativeLockTime::from(self.sequence)
 	}
 }
 
@@ -181,7 +184,7 @@ pub struct TxOutput {
 
 type Output = TxOutput;
 
-impl Output {
+impl ToJson for Output {
 	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("value", JsonValue::number(self.value)),
@@ -231,16 +234,6 @@ pub struct Tx {
 }
 
 impl Tx {
-	pub fn to_json(&self) -> JsonValue {
-		JsonValue::object([
-			("version", JsonValue::number(self.version)),
-			("segwit", JsonValue::bool(self.segwit)),
-			("inputs", JsonValue::array(self.inputs.iter().map(|e| e.to_json()))),
-			("outputs", JsonValue::array(self.outputs.iter().map(|e| e.to_json()))),
-			("abs_lock_time", self.abs_lock_time.to_json()),
-		])
-	}
-
 	pub fn compute_merkle_root(txs: &[Tx]) -> Sha256 {
 		assert!(txs.len() > 0);
 		if txs.len() == 1 {
@@ -248,6 +241,18 @@ impl Tx {
 		} else {
 			unimplemented!()
 		}
+	}
+}
+
+impl ToJson for Tx {
+	fn to_json(&self) -> JsonValue {
+		JsonValue::object([
+			("version", JsonValue::number(self.version)),
+			("segwit", JsonValue::bool(self.segwit)),
+			("inputs", JsonValue::array(self.inputs.iter().map(|e| e.to_json()))),
+			("outputs", JsonValue::array(self.outputs.iter().map(|e| e.to_json()))),
+			("abs_lock_time", self.abs_lock_time.to_json()),
+		])
 	}
 }
 

@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
 	err::*,
-	json::JsonValue,
+	json::*,
 	common::now,
 };
 
@@ -70,8 +70,10 @@ impl Version {
 			relay: true,
 		}
 	}
+}
 
-	pub fn to_json(&self) -> JsonValue {
+impl ToJson for Version {
+	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("version",      JsonValue::number(self.version)),
 			("services",     JsonValue::number(self.services)),

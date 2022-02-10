@@ -30,14 +30,6 @@ pub struct Block {
 }
 
 impl Block {
-	#[allow(dead_code)]
-	pub fn to_json(&self) -> JsonValue {
-		JsonValue::object([
-			("header", self.header.to_json()),
-			("txs", JsonValue::array(self.txs.iter().map(|e| e.to_json()))),
-		])
-	}
-
 	pub fn genesis() -> Self {
 		let mut input = TxInput::default();
 		input.index = 0xffff_ffff;
@@ -79,6 +71,15 @@ impl Block {
 		assert!(block_hash == genesis_block_hash, "{} != {}", block_hash, genesis_block_hash);
 
 		block
+	}
+}
+
+impl ToJson for Block {
+	fn to_json(&self) -> JsonValue {
+		JsonValue::object([
+			("header", self.header.to_json()),
+			("txs", JsonValue::array(self.txs.iter().map(|e| e.to_json()))),
+		])
 	}
 }
 

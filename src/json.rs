@@ -9,6 +9,10 @@ pub enum JsonValue {
 	Array(Vec<JsonValue>),
 }
 
+pub trait ToJson {
+	fn to_json(&self) -> JsonValue;
+}
+
 pub trait IntoF64 { fn into_f64(self) -> f64; }
 impl IntoF64 for u8 { fn into_f64(self) -> f64 { self as f64 } }
 impl IntoF64 for i8 { fn into_f64(self) -> f64 { self as f64 } }

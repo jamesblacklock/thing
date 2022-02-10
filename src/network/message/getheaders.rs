@@ -4,7 +4,7 @@ use std::{
 
 use crate::{
 	err::*,
-	json::JsonValue,
+	json::*,
     sha256::*,
 };
 
@@ -52,8 +52,10 @@ impl GetHeaders {
             hash_stop: None,
 		}
 	}
+}
 
-	pub fn to_json(&self) -> JsonValue {
+impl ToJson for GetHeaders {
+	fn to_json(&self) -> JsonValue {
         let hash_stop = if let Some(hash_stop) = self.hash_stop {
             JsonValue::string(format!("{}", hash_stop))
         } else {

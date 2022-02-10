@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
 	err::*,
-	json::JsonValue,
+	json::*,
 	sha256::Sha256,
 };
 
@@ -73,6 +73,15 @@ pub struct InvItem {
 }
 
 impl InvItem {
+	pub fn new(object_type: InvType, hash: Sha256) -> Self {
+		InvItem {
+			object_type,
+			hash,
+		}
+	}
+}
+
+impl ToJson for InvItem {
 	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("type", JsonValue::string(format!("{}", self.object_type))),
@@ -107,18 +116,29 @@ pub struct Inv {
 }
 
 impl Inv {
-	// pub fn new() -> Self {
-	// 	Inv {
-	// 		inv: Vec::new(),
-	// 	}
-	// }
+	pub fn new(items: Vec<InvItem>) -> Self {
+		Inv {
+			inv: items,
+		}
+	}
 
 	pub fn iter(&self) -> std::slice::Iter<InvItem> {
 		self.inv.iter()
 	}
+}
 
-	pub fn to_json(&self) -> JsonValue {
+impl ToJson for Inv {
+	fn to_json(&self) -> JsonValue {
 		JsonValue::Array(self.inv.iter().map(|e| e.to_json()).collect())
+	}
+}
+
+impl IntoIterator for Inv {
+	type Item = InvItem;
+	type IntoIter = std::vec::IntoIter<InvItem>;
+	
+	fn into_iter(self) -> std::vec::IntoIter<InvItem> {
+		self.inv.into_iter()
 	}
 }
 
@@ -157,8 +177,10 @@ impl GetData {
 	// pub fn items(&self) -> &[InvItem] {
 	//     self.0.items()
 	// }
+}
 
-	pub fn to_json(&self) -> JsonValue {
+impl ToJson for GetData {
+	fn to_json(&self) -> JsonValue {
 		self.0.to_json()
 	}
 }

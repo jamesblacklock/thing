@@ -4,7 +4,7 @@ use std::{
 
 use crate::{
 	err::*,
-	json::JsonValue,
+	json::*,
 	common::{
 		read_var_int,
 		write_var_int,
@@ -28,8 +28,10 @@ impl Addr {
 	// 		addrs: Vec::new(),
 	// 	}
 	// }
+}
 
-	pub fn to_json(&self) -> JsonValue {
+impl ToJson for Addr {
+	fn to_json(&self) -> JsonValue {
         JsonValue::Array(self.addrs.iter().map(|e| e.to_json()).collect())
 	}
 }

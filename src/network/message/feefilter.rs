@@ -4,7 +4,7 @@ use std::{
 
 use crate::{
 	err::*,
-	json::JsonValue,
+	json::*,
 };
 
 use crate::common::{
@@ -27,12 +27,14 @@ impl FeeFilter {
 	// 	FeeFilter { feerate }
 	// }
 
-	pub fn to_json(&self) -> JsonValue {
-		JsonValue::number(self.feerate)
-	}
-
 	pub fn feerate(&self) -> u64 {
 		self.feerate
+	}
+}
+
+impl ToJson for FeeFilter {
+	fn to_json(&self) -> JsonValue {
+		JsonValue::number(self.feerate)
 	}
 }
 

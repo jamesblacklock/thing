@@ -4,7 +4,7 @@ use std::{
 
 use crate::{
 	err::*,
-	json::JsonValue,
+	json::*,
 };
 
 use crate::common::{
@@ -26,8 +26,10 @@ impl Pong {
 	pub fn new(nonce: u64) -> Self {
 		Pong { nonce }
 	}
+}
 
-	pub fn to_json(&self) -> JsonValue {
+impl ToJson for Pong {
+	fn to_json(&self) -> JsonValue {
 		JsonValue::number(self.nonce)
 	}
 }

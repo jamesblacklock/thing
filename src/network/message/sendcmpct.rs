@@ -4,7 +4,7 @@ use std::{
 
 use crate::{
 	err::*,
-	json::JsonValue,
+	json::*,
 };
 
 use crate::common::{
@@ -32,8 +32,10 @@ impl SendCmpct {
 	// 		version: 1,
 	// 	}
 	// }
+}
 
-	pub fn to_json(&self) -> JsonValue {
+impl ToJson for SendCmpct {
+	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("set",     JsonValue::bool(self.set)),
 			("version", JsonValue::number(self.version)),

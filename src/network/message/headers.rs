@@ -4,7 +4,7 @@ use std::{
 
 use crate::{
 	err::*,
-	json::JsonValue,
+	json::*,
 	sha256::*,
 };
 
@@ -35,19 +35,7 @@ pub struct Header {
 	pub tx_count: usize,
 }
 
-impl Header {
-	pub fn to_json(&self) -> JsonValue {
-		JsonValue::object([
-			("version", JsonValue::number(self.version)),
-			("prev_block", JsonValue::string(format!("{}", self.prev_block))),
-			("merkle_root", JsonValue::string(format!("{}", self.merkle_root))),
-			("timestamp", JsonValue::number(self.timestamp)),
-			("bits", JsonValue::number(self.bits)),
-			("nonce", JsonValue::number(self.nonce)),
-		])
-	}
-
-	pub fn tx_count(&self) -> usize {
+impl Header {pub fn tx_count(&self) -> usize {
 		self.tx_count
 	}
 
@@ -64,6 +52,19 @@ impl Header {
 		write_u32(stream, self.timestamp)?;
 		write_u32(stream, self.bits)?;
 		write_u32(stream, self.nonce)
+	}
+}
+
+impl ToJson for Header {
+	fn to_json(&self) -> JsonValue {
+		JsonValue::object([
+			("version", JsonValue::number(self.version)),
+			("prev_block", JsonValue::string(format!("{}", self.prev_block))),
+			("merkle_root", JsonValue::string(format!("{}", self.merkle_root))),
+			("timestamp", JsonValue::number(self.timestamp)),
+			("bits", JsonValue::number(self.bits)),
+			("nonce", JsonValue::number(self.nonce)),
+		])
 	}
 }
 
@@ -106,12 +107,14 @@ impl Headers {
 	// 	}
 	// }
 
-	pub fn to_json(&self) -> JsonValue {
-		JsonValue::array(self.0.iter().map(|e| e.to_json()))
-	}
-
 	pub fn iter(&self) -> std::slice::Iter<Header> {
 		self.0.iter()
+	}
+}
+
+impl ToJson for Headers {
+	fn to_json(&self) -> JsonValue {
+		JsonValue::array(self.0.iter().map(|e| e.to_json()))
 	}
 }
 

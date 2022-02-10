@@ -6,7 +6,7 @@ use crate::{
     err::*,
     sha256::compute_double_sha256,
     sha256::Sha256,
-    json::JsonValue,
+    json::*,
 };
 
 use crate::common::{
@@ -69,7 +69,9 @@ impl ShortNetAddr {
 			addr,
 		}
 	}
+}
 
+impl ToJson for ShortNetAddr {
 	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("services", JsonValue::number(self.services)),
@@ -123,7 +125,9 @@ impl NetAddr {
 	// 		addr,
 	// 	}
 	// }
+}
 
+impl ToJson for NetAddr {
 	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("timestamp", JsonValue::number(self.timestamp)),
@@ -213,7 +217,7 @@ pub enum Payload {
 	GetHeaders(GetHeaders),
 	GetBlocks(GetHeaders),
 	Tx(Sha256, Tx),
-	Block,
+	Block(Block),
 	Headers(Headers),
 	GetAddr,
 	MemPool,
@@ -250,7 +254,7 @@ impl Payload {
 			Payload::GetBlocks(_) => "getblocks",
 			Payload::GetHeaders(_) => "getheaders",
 			Payload::Tx(_, _) => "tx",
-			Payload::Block => "block",
+			Payload::Block(_) => "block",
 			Payload::Headers(_) => "headers",
 			Payload::GetAddr => "getaddr",
 			Payload::MemPool => "mempool",
@@ -272,6 +276,9 @@ impl Payload {
 			Payload::BlockTxn => "blocktxn",
 		}
 	}
+}
+
+impl ToJson for Payload {
 	fn to_json(&self) -> JsonValue {
 		match self {
 			Payload::Version(x) => x.to_json(),
@@ -286,7 +293,7 @@ impl Payload {
 			Payload::GetBlocks(x) => x.to_json(),
 			Payload::GetHeaders(x) => x.to_json(),
 			Payload::Tx(_, x) => x.to_json(),
-			Payload::Block => JsonValue::null(),
+			Payload::Block(x) => x.to_json(),
 			Payload::Headers(x) => x.to_json(),
 			Payload::GetAddr => JsonValue::null(),
 			Payload::MemPool => JsonValue::null(),
@@ -325,7 +332,7 @@ impl Serialize for Payload {
 			Payload::GetHeaders(x) => x.serialize(stream),
 			Payload::GetBlocks(x) => x.serialize(stream),
 			Payload::Tx(_, x) => x.serialize(stream),
-			Payload::Block => Ok(()),
+			Payload::Block(x) => x.serialize(stream),
 			Payload::Headers(x) => x.serialize(stream),
 			Payload::GetAddr => Ok(()),
 			Payload::MemPool => Ok(()),
@@ -480,7 +487,7 @@ impl Deserialize for Message {
 			"getblocks" => Payload::GetBlocks(GetHeaders::deserialize(payload_stream)?),
 			"getheaders" => Payload::GetHeaders(GetHeaders::deserialize(payload_stream)?),
 			"tx" => Payload::Tx(sha256, Tx::deserialize(payload_stream)?),
-			"block" => Payload::Block,
+			"block" => Payload::Block(Block::deserialize(payload_stream)?),
 			"headers" => Payload::Headers(Headers::deserialize(payload_stream)?),
 			"getaddr" => Payload::GetAddr,
 			"mempool" => Payload::MemPool,

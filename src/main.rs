@@ -22,6 +22,8 @@ use sha256::Sha256;
 
 use network::{
 	Peer,
+	Serialize,
+	Deserialize,
 	message::{
 		Message,
 		Payload,
@@ -29,6 +31,7 @@ use network::{
 		Ping,
 		Inv,
 		InvType,
+		InvItem,
 		Tx,
 		FeeFilter,
 		Block,
@@ -38,6 +41,7 @@ use network::{
 };
 
 use err::*;
+use json::*;
 
 #[derive(Default)]
 struct Config {
@@ -48,6 +52,7 @@ struct Config {
 }
 
 struct BlocksDB {
+	blocks_downloaded: usize,
 	hashes: Vec<Sha256>,
 	headers: HashMap<Sha256, Header>,
 }
@@ -57,9 +62,25 @@ impl BlocksDB {
 		let genesis = Block::genesis().header;
 		let genesis_hash = genesis.compute_hash();
 		BlocksDB {
+			blocks_downloaded: 0,
 			hashes: vec![genesis_hash],
 			headers: HashMap::from([(genesis_hash, genesis)]),
 		}
+	}
+
+	fn store_block(&self, block: Block) -> Result<()> {
+		std::fs::create_dir_all("./data/blocks")
+			.map_err(|err| Err::IOError(err.to_string()))?;
+		let mut file = std::fs::File::create(format!("./data/blocks/{}.block", block.header.compute_hash()))
+			.map_err(|err| Err::IOError(err.to_string()))?;
+		block.serialize(&mut file)?;
+		Ok(())
+	}
+
+	fn load_block(&self, hash: Sha256) -> Result<Block> {
+		let mut file = std::fs::File::open(format!("./data/blocks/{}.block", hash))
+			.map_err(|err| Err::IOError(err.to_string()))?;
+		Block::deserialize(&mut file)
 	}
 }
 
@@ -96,6 +117,7 @@ enum ApplicationMessage {
 	ShowMempool,
 	ShowBlockHashes,
 	ShowHeader(String),
+	ShowBlock(String),
 	ShowTx(String),
 	Shutdown,
 }
@@ -178,6 +200,7 @@ impl Node {
 			Payload::Tx(id, payload)   => self.handle_tx_message(peer_index, id, payload),
 			Payload::SendHeaders       => self.handle_sendheaders_message(peer_index),
 			Payload::Headers(payload)  => self.handle_headers_message(peer_index, payload),
+			Payload::Block(payload)    => self.handle_block_message(peer_index, payload),
 			p => {
 				log_debug!("peer {}: {}: no response implemented\n", peer_index, p.name());
 				Ok(())
@@ -268,8 +291,21 @@ impl Node {
 		if let Some(peer) = self.peers.get_mut(&peer_index) {
 			let m = Message::getheaders(&self.blocks.hashes);
 			peer.writer.send(m)?;
+
+			if self.blocks.blocks_downloaded < 10000 {
+				let have = self.blocks.blocks_downloaded;
+				let need = &self.blocks.hashes[have..have+500];
+				self.blocks.blocks_downloaded += 500;
+				let m = Message::getdata(need.iter().map(|e| InvItem::new(InvType::Block, e.clone())).collect());
+				peer.writer.send(m)?;
+			}
 		}
 
+		Ok(())
+	}
+
+	fn handle_block_message(&mut self, _peer_index: usize, block: Block) -> Result<()> {
+		self.blocks.store_block(block)?;
 		Ok(())
 	}
 
@@ -284,7 +320,6 @@ impl Node {
 				},
 				InvType::Block => {
 					// items.push(item.clone());
-					println!("{}", inv.to_json());
 				},
 				// InvType::FilteredBlock => {},
 				// InvType::CmpctBlock => {},
@@ -306,6 +341,24 @@ impl Node {
 	fn handle_tx_message(&mut self, _peer_index: usize, id: Sha256, tx: Tx) -> Result<()> {
 		self.mempool.add_tx(id, tx);
 		Ok(())
+	}
+
+	fn show_object<T, F>(id: String, f: F)
+		where T: ToJson, F: FnOnce(Sha256) -> Option<T> {
+		let found = if let Ok(id) = Sha256::try_from(id.as_str()) {
+			println!("got id: {}", id);
+			if let Some(object) = f(id) {
+				println!("{}", object.to_json());
+				true
+			} else {
+				false
+			}
+		} else {
+			false
+		};
+		if !found {
+			println!("<not found>");
+		}
 	}
 	
 	pub fn run(mut self) -> Result<()> {
@@ -340,39 +393,18 @@ impl Node {
 							}
 						},
 						ApplicationMessage::ShowBlockHashes => {
-							for (i, hash) in self.blocks.hashes.iter().enumerate() {
+							for (i, hash) in self.blocks.hashes.iter().take(self.blocks.blocks_downloaded).enumerate() {
 								println!("{:010}: {}", i, hash);
 							}
 						},
 						ApplicationMessage::ShowHeader(id) => {
-							let found = if let Ok(id) = Sha256::try_from(id.as_str()) {
-								if self.blocks.headers.contains_key(&id) {
-									println!("{}", self.blocks.headers[&id].to_json());
-									true
-								} else {
-									false
-								}
-							} else {
-								false
-							};
-							if !found {
-								println!("<not found>");
-							}
+							Node::show_object(id, |id| self.blocks.headers.get(&id).map(|e| e.clone()));
+						},
+						ApplicationMessage::ShowBlock(id) => {
+							Node::show_object(id, |id| self.blocks.load_block(id).ok());
 						},
 						ApplicationMessage::ShowTx(id) => {
-							let found = if let Ok(id) = Sha256::try_from(id.as_str()) {
-								if self.mempool.txs.contains_key(&id) {
-									println!("{}", self.mempool.txs[&id].to_json());
-									true
-								} else {
-									false
-								}
-							} else {
-								false
-							};
-							if !found {
-								println!("<not found>");
-							}
+							Node::show_object(id, |id| self.mempool.txs.get(&id).map(|e| e.clone()));
 						},
 					}
 					send_cmd_done.send(()).unwrap();
@@ -401,12 +433,16 @@ impl Node {
 					send_cmd.send(ApplicationMessage::ShowMempool).unwrap();
 					recv_cmd_done.recv().unwrap();
 				},
-				["blockhashes"] => {
+				["blocks"] => {
 					send_cmd.send(ApplicationMessage::ShowBlockHashes).unwrap();
 					recv_cmd_done.recv().unwrap();
 				},
 				["header", id] => {
 					send_cmd.send(ApplicationMessage::ShowHeader(id.into())).unwrap();
+					recv_cmd_done.recv().unwrap();
+				},
+				["block", id] => {
+					send_cmd.send(ApplicationMessage::ShowBlock(id.into())).unwrap();
 					recv_cmd_done.recv().unwrap();
 				},
 				["tx", id] => {
