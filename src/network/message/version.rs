@@ -65,19 +65,19 @@ impl Version {
 			addr_recv: ShortNetAddr::from(&addr),
 			addr_from: ShortNetAddr::from("[::0]:0"),
 			nonce: rand::random(),
-			user_agent: String::from("/Blacklock:0.1.0/"),
+			user_agent: String::from("/Frabjous:0.1.0/"),
 			start_height: 0,
 			relay: true,
 		}
 	}
 
-	pub fn into_json(&self) -> JsonValue {
+	pub fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("version",      JsonValue::number(self.version)),
 			("services",     JsonValue::number(self.services)),
 			("timestamp",    JsonValue::number(self.timestamp)),
-			("addr_recv",    self.addr_recv.into_json()),
-			("addr_from",    self.addr_from.into_json()),
+			("addr_recv",    self.addr_recv.to_json()),
+			("addr_from",    self.addr_from.to_json()),
 			("nonce",        JsonValue::number(self.nonce)),
 			("user_agent",   JsonValue::string(&self.user_agent)),
 			("start_height", JsonValue::number(self.start_height)),

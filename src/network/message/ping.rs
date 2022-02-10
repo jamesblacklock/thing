@@ -29,7 +29,7 @@ impl Ping {
 	// 	}
 	// }
 
-	pub fn into_json(&self) -> JsonValue {
+	pub fn to_json(&self) -> JsonValue {
 		JsonValue::number(self.nonce)
 	}
 

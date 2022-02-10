@@ -11,6 +11,18 @@ pub fn serialize<T: Serialize>(item: &T) -> Result<Vec<u8>> {
 	Ok(bytes)
 }
 
+#[allow(dead_code)]
+pub fn fmt_size(n: usize) -> String {
+	let units = ["bytes", "KB", "MB", "GB", "TB", "PB", "EB"];
+	let mut i = 0;
+	let mut size = n as f32;
+	while i < units.len() && size >= 1024.0 {
+		size /= 1024.0;
+		i += 1;
+	}
+	format!("{:.2} {}", size, units[i])
+}
+
 struct HexBytes<'a> {
 	slice: &'a [u8],
 	offset: usize,

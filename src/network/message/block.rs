@@ -30,10 +30,11 @@ pub struct Block {
 }
 
 impl Block {
-	pub fn into_json(&self) -> JsonValue {
+	#[allow(dead_code)]
+	pub fn to_json(&self) -> JsonValue {
 		JsonValue::object([
-			("header", self.header.into_json()),
-			("txs", JsonValue::array(self.txs.iter().map(|e| e.into_json()))),
+			("header", self.header.to_json()),
+			("txs", JsonValue::array(self.txs.iter().map(|e| e.to_json()))),
 		])
 	}
 

@@ -36,7 +36,7 @@ pub struct Header {
 }
 
 impl Header {
-	pub fn into_json(&self) -> JsonValue {
+	pub fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("version", JsonValue::number(self.version)),
 			("prev_block", JsonValue::string(format!("{}", self.prev_block))),
@@ -106,13 +106,22 @@ impl Headers {
 	// 	}
 	// }
 
-	pub fn into_json(&self) -> JsonValue {
-		JsonValue::array(self.0.iter().map(|e| e.into_json()))
+	pub fn to_json(&self) -> JsonValue {
+		JsonValue::array(self.0.iter().map(|e| e.to_json()))
 	}
 
 	pub fn iter(&self) -> std::slice::Iter<Header> {
 		self.0.iter()
 	}
+}
+
+impl<'a> IntoIterator for Headers {
+    type Item = Header;
+    type IntoIter = std::vec::IntoIter<Header>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
 }
 
 impl Deserialize for Headers {

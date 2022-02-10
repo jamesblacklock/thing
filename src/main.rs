@@ -32,6 +32,7 @@ use network::{
 		Tx,
 		FeeFilter,
 		Block,
+		Header,
 		Headers,
 	}
 };
@@ -47,13 +48,17 @@ struct Config {
 }
 
 struct BlocksDB {
-	headers: Vec<Sha256>,
+	hashes: Vec<Sha256>,
+	headers: HashMap<Sha256, Header>,
 }
 
 impl BlocksDB {
 	fn new() -> Self {
+		let genesis = Block::genesis().header;
+		let genesis_hash = genesis.compute_hash();
 		BlocksDB {
-			headers: vec![Block::genesis().header.compute_hash()],
+			hashes: vec![genesis_hash],
+			headers: HashMap::from([(genesis_hash, genesis)]),
 		}
 	}
 }
@@ -89,7 +94,8 @@ impl Mempool {
 
 enum ApplicationMessage {
 	ShowMempool,
-	ShowHeaders,
+	ShowBlockHashes,
+	ShowHeader(String),
 	ShowTx(String),
 	Shutdown,
 }
@@ -205,7 +211,7 @@ impl Node {
 				}
 				peer.handshake_complete = true;
 
-				peer.writer.send(Message::getheaders(&self.blocks.headers))?;
+				peer.writer.send(Message::getheaders(&self.blocks.hashes))?;
 			}
 		}
 		Ok(())
@@ -248,15 +254,19 @@ impl Node {
 	}
 
 	fn handle_headers_message(&mut self, peer_index: usize, headers: Headers) -> Result<()> {
-		for header in headers.iter() {
-			let last = *self.blocks.headers.last().unwrap();
-			assert!(header.prev_block == last);
-			self.blocks.headers.push(header.compute_hash());
+		for header in headers {
+			let last = *self.blocks.hashes.last().unwrap();
+			if header.prev_block == last {
+				let hash = header.compute_hash();
+				self.blocks.headers.insert(hash, header);
+				self.blocks.hashes.push(hash);
+			} else {
+				unimplemented!();
+			}
 		}
 
 		if let Some(peer) = self.peers.get_mut(&peer_index) {
-			let m = Message::getheaders(&self.blocks.headers);
-			// println!("{}", m);
+			let m = Message::getheaders(&self.blocks.hashes);
 			peer.writer.send(m)?;
 		}
 
@@ -272,9 +282,10 @@ impl Node {
 						items.push(item.clone());
 					}
 				},
-				// InvType::Block => {
-				// 	items.push(item.clone());
-				// },
+				InvType::Block => {
+					// items.push(item.clone());
+					println!("{}", inv.to_json());
+				},
 				// InvType::FilteredBlock => {},
 				// InvType::CmpctBlock => {},
 				// InvType::WitnessTx => {},
@@ -328,15 +339,30 @@ impl Node {
 								println!("{}", id);
 							}
 						},
-						ApplicationMessage::ShowHeaders => {
-							for (i, hash) in self.blocks.headers.iter().enumerate() {
+						ApplicationMessage::ShowBlockHashes => {
+							for (i, hash) in self.blocks.hashes.iter().enumerate() {
 								println!("{:010}: {}", i, hash);
+							}
+						},
+						ApplicationMessage::ShowHeader(id) => {
+							let found = if let Ok(id) = Sha256::try_from(id.as_str()) {
+								if self.blocks.headers.contains_key(&id) {
+									println!("{}", self.blocks.headers[&id].to_json());
+									true
+								} else {
+									false
+								}
+							} else {
+								false
+							};
+							if !found {
+								println!("<not found>");
 							}
 						},
 						ApplicationMessage::ShowTx(id) => {
 							let found = if let Ok(id) = Sha256::try_from(id.as_str()) {
 								if self.mempool.txs.contains_key(&id) {
-									println!("{}", self.mempool.txs[&id].into_json());
+									println!("{}", self.mempool.txs[&id].to_json());
 									true
 								} else {
 									false
@@ -374,16 +400,20 @@ impl Node {
 				["mempool"] => {
 					send_cmd.send(ApplicationMessage::ShowMempool).unwrap();
 					recv_cmd_done.recv().unwrap();
-				}
-				["headers"] => {
-					send_cmd.send(ApplicationMessage::ShowHeaders).unwrap();
+				},
+				["blockhashes"] => {
+					send_cmd.send(ApplicationMessage::ShowBlockHashes).unwrap();
 					recv_cmd_done.recv().unwrap();
-				}
+				},
+				["header", id] => {
+					send_cmd.send(ApplicationMessage::ShowHeader(id.into())).unwrap();
+					recv_cmd_done.recv().unwrap();
+				},
 				["tx", id] => {
 					send_cmd.send(ApplicationMessage::ShowTx(id.into())).unwrap();
 					recv_cmd_done.recv().unwrap();
-				}
-				[] => {}
+				},
+				[] => {},
 				_ => {
 					println!("<invalid command>");
 				},

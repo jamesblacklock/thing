@@ -73,7 +73,7 @@ pub struct InvItem {
 }
 
 impl InvItem {
-	fn into_json(&self) -> JsonValue {
+	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("type", JsonValue::string(format!("{}", self.object_type))),
 			("hash", JsonValue::string(format!("{}", self.hash))),
@@ -117,8 +117,8 @@ impl Inv {
 		self.inv.iter()
 	}
 
-	pub fn into_json(&self) -> JsonValue {
-		JsonValue::Array(self.inv.iter().map(|e| e.into_json()).collect())
+	pub fn to_json(&self) -> JsonValue {
+		JsonValue::Array(self.inv.iter().map(|e| e.to_json()).collect())
 	}
 }
 
@@ -158,8 +158,8 @@ impl GetData {
 	//     self.0.items()
 	// }
 
-	pub fn into_json(&self) -> JsonValue {
-		self.0.into_json()
+	pub fn to_json(&self) -> JsonValue {
+		self.0.to_json()
 	}
 }
 

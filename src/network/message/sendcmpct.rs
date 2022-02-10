@@ -33,7 +33,7 @@ impl SendCmpct {
 	// 	}
 	// }
 
-	pub fn into_json(&self) -> JsonValue {
+	pub fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("set",     JsonValue::bool(self.set)),
 			("version", JsonValue::number(self.version)),

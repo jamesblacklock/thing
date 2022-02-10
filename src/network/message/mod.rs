@@ -70,7 +70,7 @@ impl ShortNetAddr {
 		}
 	}
 
-	fn into_json(&self) -> JsonValue {
+	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("services", JsonValue::number(self.services)),
 			("addr",     JsonValue::string(format!("{}", self.addr))),
@@ -124,7 +124,7 @@ impl NetAddr {
 	// 	}
 	// }
 
-	fn into_json(&self) -> JsonValue {
+	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("timestamp", JsonValue::number(self.timestamp)),
 			("services", JsonValue::number(self.services)),
@@ -272,37 +272,37 @@ impl Payload {
 			Payload::BlockTxn => "blocktxn",
 		}
 	}
-	fn into_json(&self) -> JsonValue {
+	fn to_json(&self) -> JsonValue {
 		match self {
-			Payload::Version(x) => x.into_json(),
+			Payload::Version(x) => x.to_json(),
 			Payload::Verack => JsonValue::null(),
 			Payload::WTxIdRelay => JsonValue::null(),
 			Payload::SendAddrV2 => JsonValue::null(),
 			Payload::SendHeaders => JsonValue::null(),
-			Payload::Addr(x) => x.into_json(),
-			Payload::Inv(x) => x.into_json(),
-			Payload::GetData(x) => x.into_json(),
+			Payload::Addr(x) => x.to_json(),
+			Payload::Inv(x) => x.to_json(),
+			Payload::GetData(x) => x.to_json(),
 			Payload::NotFound => JsonValue::null(),
-			Payload::GetBlocks(x) => x.into_json(),
-			Payload::GetHeaders(x) => x.into_json(),
-			Payload::Tx(_, x) => x.into_json(),
+			Payload::GetBlocks(x) => x.to_json(),
+			Payload::GetHeaders(x) => x.to_json(),
+			Payload::Tx(_, x) => x.to_json(),
 			Payload::Block => JsonValue::null(),
-			Payload::Headers(x) => x.into_json(),
+			Payload::Headers(x) => x.to_json(),
 			Payload::GetAddr => JsonValue::null(),
 			Payload::MemPool => JsonValue::null(),
 			Payload::CheckOrder => JsonValue::null(),
 			Payload::SubmitOrder => JsonValue::null(),
 			Payload::Reply => JsonValue::null(),
-			Payload::Ping(x) => x.into_json(),
-			Payload::Pong(x) => x.into_json(),
+			Payload::Ping(x) => x.to_json(),
+			Payload::Pong(x) => x.to_json(),
 			Payload::Reject => JsonValue::null(),
 			Payload::FilterLoad => JsonValue::null(),
 			Payload::FilterAdd => JsonValue::null(),
 			Payload::FilterClear => JsonValue::null(),
 			Payload::MerkleBlock => JsonValue::null(),
 			Payload::Alert => JsonValue::null(),
-			Payload::FeeFilter(x) => x.into_json(),
-			Payload::SendCmpct(x) => x.into_json(),
+			Payload::FeeFilter(x) => x.to_json(),
+			Payload::SendCmpct(x) => x.to_json(),
 			Payload::CmpctBlock => JsonValue::null(),
 			Payload::GetBlockTxn => JsonValue::null(),
 			Payload::BlockTxn => JsonValue::null(),
@@ -383,12 +383,12 @@ impl Message {
 		}
 	}
 	
-	pub fn getblocks(hashes: &[Sha256]) -> Self {
-		Message {
-			network: Network::Main,
-			payload: Payload::GetBlocks(GetHeaders::new(hashes)),
-		}
-	}
+	// pub fn getblocks(hashes: &[Sha256]) -> Self {
+	// 	Message {
+	// 		network: Network::Main,
+	// 		payload: Payload::GetBlocks(GetHeaders::new(hashes)),
+	// 	}
+	// }
 
 	pub fn sendheaders() -> Self {
 		Message {
@@ -422,7 +422,7 @@ impl fmt::Display for Message {
 		if let Payload::Tx(id, _) = self.payload {
 			props.push(("id", JsonValue::string(format!("{}", id))));
 		}
-		props.push(("payload", self.payload.into_json()));
+		props.push(("payload", self.payload.to_json()));
 
 		write!(f, "{}", JsonValue::object(props))
 	}

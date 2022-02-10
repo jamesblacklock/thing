@@ -53,7 +53,7 @@ impl GetHeaders {
 		}
 	}
 
-	pub fn into_json(&self) -> JsonValue {
+	pub fn to_json(&self) -> JsonValue {
         let hash_stop = if let Some(hash_stop) = self.hash_stop {
             JsonValue::string(format!("{}", hash_stop))
         } else {

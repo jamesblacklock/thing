@@ -29,8 +29,8 @@ impl Addr {
 	// 	}
 	// }
 
-	pub fn into_json(&self) -> JsonValue {
-        JsonValue::Array(self.addrs.iter().map(|e| e.into_json()).collect())
+	pub fn to_json(&self) -> JsonValue {
+        JsonValue::Array(self.addrs.iter().map(|e| e.to_json()).collect())
 	}
 }
 

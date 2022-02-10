@@ -117,7 +117,7 @@ pub struct TxInput {
 type Input = TxInput;
 
 impl Input {
-	fn into_json(&self) -> JsonValue {
+	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("tx_hash", JsonValue::string(format!("{}", self.tx_hash))),
 			("index", JsonValue::number(self.index)),
@@ -182,7 +182,7 @@ pub struct TxOutput {
 type Output = TxOutput;
 
 impl Output {
-	fn into_json(&self) -> JsonValue {
+	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("value", JsonValue::number(self.value)),
 			("lock", JsonValue::string(format!("{}", self.lock))),
@@ -231,12 +231,12 @@ pub struct Tx {
 }
 
 impl Tx {
-	pub fn into_json(&self) -> JsonValue {
+	pub fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("version", JsonValue::number(self.version)),
 			("segwit", JsonValue::bool(self.segwit)),
-			("inputs", JsonValue::array(self.inputs.iter().map(|e| e.into_json()))),
-			("outputs", JsonValue::array(self.outputs.iter().map(|e| e.into_json()))),
+			("inputs", JsonValue::array(self.inputs.iter().map(|e| e.to_json()))),
+			("outputs", JsonValue::array(self.outputs.iter().map(|e| e.to_json()))),
 			("abs_lock_time", self.abs_lock_time.to_json()),
 		])
 	}
