@@ -33,10 +33,13 @@ use network::{
 		InvType,
 		InvItem,
 		Tx,
+		UTXOID,
+		TxOutput,
 		FeeFilter,
 		Block,
 		Header,
 		Headers,
+		ValidationResult,
 	}
 };
 
@@ -52,7 +55,8 @@ struct Config {
 }
 
 struct BlocksDB {
-	blocks_downloaded: usize,
+	blocks_requested: usize,
+	blocks_validated: usize,
 	hashes: Vec<Sha256>,
 	headers: HashMap<Sha256, Header>,
 }
@@ -62,25 +66,34 @@ impl BlocksDB {
 		let genesis = Block::genesis().header;
 		let genesis_hash = genesis.compute_hash();
 		BlocksDB {
-			blocks_downloaded: 0,
+			blocks_requested: 0,
+			blocks_validated: 0,
 			hashes: vec![genesis_hash],
 			headers: HashMap::from([(genesis_hash, genesis)]),
 		}
 	}
 
 	fn store_block(&self, block: Block) -> Result<()> {
-		std::fs::create_dir_all("./data/blocks")
+		let hash = block.header.compute_hash();
+		if self.has_block(hash) {
+			return Ok(());
+		}
+		std::fs::create_dir_all("./data/block_db")
 			.map_err(|err| Err::IOError(err.to_string()))?;
-		let mut file = std::fs::File::create(format!("./data/blocks/{}.block", block.header.compute_hash()))
+		let mut file = std::fs::File::create(format!("./data/block_db/{}.block", hash))
 			.map_err(|err| Err::IOError(err.to_string()))?;
 		block.serialize(&mut file)?;
 		Ok(())
 	}
 
 	fn load_block(&self, hash: Sha256) -> Result<Block> {
-		let mut file = std::fs::File::open(format!("./data/blocks/{}.block", hash))
+		let mut file = std::fs::File::open(format!("./data/block_db/{}.block", hash))
 			.map_err(|err| Err::IOError(err.to_string()))?;
 		Block::deserialize(&mut file)
+	}
+
+	fn has_block(&self, hash: Sha256) -> bool {
+		std::path::Path::new(&format!("./data/block_db/{}.block", hash)).exists()
 	}
 }
 
@@ -135,7 +148,8 @@ struct Node {
 	peers: HashMap<usize, PeerHandle>,
 	recv: Receiver<(usize, Message)>,
 	mempool: Mempool,
-	blocks: BlocksDB,
+	block_db: BlocksDB,
+	utxos: HashMap<UTXOID, TxOutput>,
 }
 
 impl Node {
@@ -184,7 +198,8 @@ impl Node {
 			peers,
 			recv,
 			mempool: Mempool::new(),
-			blocks: BlocksDB::new(),
+			block_db: BlocksDB::new(),
+			utxos: HashMap::new(),
 		})
 	}
 
@@ -234,7 +249,7 @@ impl Node {
 				}
 				peer.handshake_complete = true;
 
-				peer.writer.send(Message::getheaders(&self.blocks.hashes))?;
+				peer.writer.send(Message::getheaders(&self.block_db.hashes))?;
 			}
 		}
 		Ok(())
@@ -278,26 +293,32 @@ impl Node {
 
 	fn handle_headers_message(&mut self, peer_index: usize, headers: Headers) -> Result<()> {
 		for header in headers {
-			let last = *self.blocks.hashes.last().unwrap();
+			let last = *self.block_db.hashes.last().unwrap();
 			if header.prev_block == last {
 				let hash = header.compute_hash();
-				self.blocks.headers.insert(hash, header);
-				self.blocks.hashes.push(hash);
+				self.block_db.headers.insert(hash, header);
+				self.block_db.hashes.push(hash);
 			} else {
 				unimplemented!();
 			}
 		}
 
 		if let Some(peer) = self.peers.get_mut(&peer_index) {
-			let m = Message::getheaders(&self.blocks.hashes);
+			let m = Message::getheaders(&self.block_db.hashes);
 			peer.writer.send(m)?;
 
-			if self.blocks.blocks_downloaded < 10000 {
-				let have = self.blocks.blocks_downloaded;
-				let need = &self.blocks.hashes[have..have+500];
-				self.blocks.blocks_downloaded += 500;
-				let m = Message::getdata(need.iter().map(|e| InvItem::new(InvType::Block, e.clone())).collect());
-				peer.writer.send(m)?;
+			if self.block_db.blocks_requested < 10000 {
+				let have = self.block_db.blocks_requested;
+				let need = &self.block_db.hashes[have..have+500];
+				self.block_db.blocks_requested += 500;
+				let need = need.iter()
+					.filter(|e| !self.block_db.has_block(**e))
+					.map(|e| InvItem::new(InvType::Block, e.clone()))
+					.collect::<Vec<_>>();
+				if need.len() > 0 {	
+					let m = Message::getdata(need);
+					peer.writer.send(m)?;
+				}
 			}
 		}
 
@@ -305,7 +326,16 @@ impl Node {
 	}
 
 	fn handle_block_message(&mut self, _peer_index: usize, block: Block) -> Result<()> {
-		self.blocks.store_block(block)?;
+		if self.block_db.blocks_validated == 2817 {
+			println!();
+		}
+		if let ValidationResult::Valid(diff) = block.validate(&mut self.utxos) {
+			self.block_db.store_block(block)?;
+			diff.apply(&mut self.utxos);
+			self.block_db.blocks_validated += 1;
+		} else {
+			panic!();
+		}
 		Ok(())
 	}
 
@@ -393,15 +423,15 @@ impl Node {
 							}
 						},
 						ApplicationMessage::ShowBlockHashes => {
-							for (i, hash) in self.blocks.hashes.iter().take(self.blocks.blocks_downloaded).enumerate() {
+							for (i, hash) in self.block_db.hashes.iter().take(self.block_db.blocks_requested).enumerate() {
 								println!("{:010}: {}", i, hash);
 							}
 						},
 						ApplicationMessage::ShowHeader(id) => {
-							Node::show_object(id, |id| self.blocks.headers.get(&id).map(|e| e.clone()));
+							Node::show_object(id, |id| self.block_db.headers.get(&id).map(|e| e.clone()));
 						},
 						ApplicationMessage::ShowBlock(id) => {
-							Node::show_object(id, |id| self.blocks.load_block(id).ok());
+							Node::show_object(id, |id| self.block_db.load_block(id).ok());
 						},
 						ApplicationMessage::ShowTx(id) => {
 							Node::show_object(id, |id| self.mempool.txs.get(&id).map(|e| e.clone()));
@@ -433,7 +463,7 @@ impl Node {
 					send_cmd.send(ApplicationMessage::ShowMempool).unwrap();
 					recv_cmd_done.recv().unwrap();
 				},
-				["blocks"] => {
+				["db"] => {
 					send_cmd.send(ApplicationMessage::ShowBlockHashes).unwrap();
 					recv_cmd_done.recv().unwrap();
 				},

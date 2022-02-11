@@ -3,6 +3,8 @@ use std::{
 		Read,
 		Write,
 	},
+	collections::HashMap,
+	collections::HashSet,
 };
 
 use crate::{
@@ -23,6 +25,78 @@ use super::{
 	TxInput,
 	TxOutput,
 };
+
+#[derive(PartialEq, Eq, Hash, Debug)]
+pub struct UTXOID(pub Sha256, pub u32);
+
+pub struct UTXOState<'a> {
+	base: &'a HashMap<UTXOID, TxOutput>,
+	added: HashMap<UTXOID, TxOutput>,
+	removed: HashSet<UTXOID>,
+	pub tx_fee: u64,
+}
+
+pub struct UTXODiff {
+	added: HashMap<UTXOID, TxOutput>,
+	removed: HashSet<UTXOID>,
+}
+
+#[must_use]
+pub enum ValidationResult {
+	Valid(UTXODiff),
+	Invalid
+}
+
+impl <'a> UTXOState<'a> {
+	pub fn new(utxos: &'a HashMap<UTXOID, TxOutput>) -> Self {
+		UTXOState {
+			base: utxos,
+			added: HashMap::new(),
+			removed: HashSet::new(),
+			tx_fee: 0,
+		}
+	}
+	
+	pub fn contains(&self, id: &UTXOID) -> bool {
+		!self.removed.contains(id) &&
+		(self.base.contains_key(id) || self.added.contains_key(id))
+	}
+
+	pub fn add(&mut self, id: UTXOID, utxo: TxOutput) {
+		self.added.insert(id, utxo);
+	}
+
+	#[must_use]
+	pub fn remove(&mut self, id: UTXOID) -> TxOutput {
+		if self.base.contains_key(&id) {
+			let utxo = self.base[&id].clone();
+			assert!(self.removed.insert(id) == true);
+			utxo
+		} else {
+			self.added.remove(&id).unwrap()
+		}
+	}
+
+	pub fn diff(self) -> UTXODiff {
+		UTXODiff {
+			added: self.added,
+			removed: self.removed,
+		}
+	}
+}
+
+impl UTXODiff {
+	pub fn apply(self, utxos: &mut HashMap<UTXOID, TxOutput>) {
+		for k in self.removed {
+			// println!("removed UTXO: {:?}", k);
+			utxos.remove(&k).unwrap();
+		}
+		for (k, v) in self.added {
+			// println!("added UTXO: {:?}", k);
+			assert!(utxos.insert(k, v).is_none());
+		}
+	}
+}
 
 pub struct Block {
 	pub header: Header,
@@ -46,9 +120,7 @@ impl Block {
 		tx.inputs.push(input);
 		tx.outputs.push(output);
 
-		let txs = vec![tx];
-
-		let merkle_root = Tx::compute_merkle_root(&txs);
+		let merkle_root = tx.compute_hash();
 
 		let block = Block {
 			header: Header {
@@ -60,7 +132,7 @@ impl Block {
 				nonce: 2083236893,
 				tx_count: 1,
 			},
-			txs,
+			txs: vec![tx],
 		};
 
 		let genesis_merkle_root = Sha256::try_from("4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b").unwrap();
@@ -71,6 +143,27 @@ impl Block {
 		assert!(block_hash == genesis_block_hash, "{} != {}", block_hash, genesis_block_hash);
 
 		block
+	}
+
+	#[must_use]
+	pub fn validate(&self, utxos: &mut HashMap<UTXOID, TxOutput>) -> ValidationResult {
+		if Tx::check_merkle_root(&self.txs, self.header.merkle_root) == false {
+			return ValidationResult::Invalid;
+		}
+		
+		let mut state = UTXOState::new(utxos);
+
+		for tx in self.txs.iter().skip(1) {
+			if tx.validate(&mut state, false) == false {
+				return ValidationResult::Invalid;
+			}
+		}
+		
+		if self.txs[0].validate(&mut state, true) == false {
+			return ValidationResult::Invalid;
+		}
+
+		ValidationResult::Valid(state.diff())
 	}
 }
 

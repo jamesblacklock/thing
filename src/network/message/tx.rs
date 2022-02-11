@@ -7,6 +7,7 @@ use crate::{
 	json::*,
 	sha256::*,
 	script::*,
+	common::SAT_PER_COIN,
 };
 
 use crate::common::{
@@ -28,6 +29,7 @@ use crate::common::{
 use super::{
 	Deserialize,
 	Serialize,
+	block::{UTXOState, UTXOID},
 };
 
 #[derive(Clone, Copy)]
@@ -117,6 +119,9 @@ pub struct TxInput {
 type Input = TxInput;
 
 impl Input {
+	fn utxo_id(&self) -> UTXOID {
+		UTXOID(self.tx_hash, self.index)
+	}
 
 	fn rel_lock_time(&self) -> RelativeLockTime {
 		RelativeLockTime::from(self.sequence)
@@ -234,13 +239,95 @@ pub struct Tx {
 }
 
 impl Tx {
-	pub fn compute_merkle_root(txs: &[Tx]) -> Sha256 {
+	#[must_use]
+	pub fn check_merkle_root(txs: &[Tx], expected: Sha256) -> bool {
+		if let Some(merkle_root) = Tx::compute_merkle_root(txs) {
+			merkle_root == expected
+		} else {
+			false
+		}
+	}
+
+	pub fn compute_merkle_root(txs: &[Tx]) -> Option<Sha256> {
 		assert!(txs.len() > 0);
 		if txs.len() == 1 {
-			compute_double_sha256(&*serialize(&txs[0]).unwrap())
+			Some(txs[0].compute_hash())
 		} else {
-			unimplemented!()
+			if txs[txs.len() - 1].compute_hash() == txs[txs.len() - 2].compute_hash() {
+				return None
+			}
+
+			let mut hashes = txs.iter().map(|e| e.compute_hash()).collect::<Vec<_>>();
+			
+			while hashes.len() > 1 {
+				if hashes.len() % 2 != 0 {
+					hashes.push(hashes.last().unwrap().clone());
+				}
+				hashes = hashes.chunks(2)
+					.map(|e| {
+						let mut combined = Vec::with_capacity(e[0].as_bytes().len() + e[1].as_bytes().len());
+						combined.extend_from_slice(e[0].as_bytes());
+						combined.extend_from_slice(e[1].as_bytes());
+						compute_double_sha256(&*combined)
+					})
+					.collect::<Vec<_>>();
+			}
+
+			Some(hashes[0])
 		}
+	}
+
+	#[must_use]
+	pub fn validate(&self, utxos: &mut UTXOState, is_coinbase: bool) -> bool {
+		let txid = compute_double_sha256(&*serialize(self).unwrap());
+		if is_coinbase {
+			if self.inputs.len() != 1 {
+				return false;
+			}
+			let input = &self.inputs[0];
+			if input.tx_hash != Sha256::default() {
+				return false;
+			}
+			if input.index != 0xffff_ffff {
+				return false;
+			}
+
+			let mut available = 50 * SAT_PER_COIN + utxos.tx_fee;
+			for (i, output) in self.outputs.iter().cloned().enumerate() {
+				if available < output.value {
+					return false;
+				}
+				available -= output.value;
+				utxos.add(UTXOID(txid, i as u32), output);
+			}
+
+			return true;
+		}
+
+		let mut available = 0;
+		for input in self.inputs.iter() {
+			let id = input.utxo_id();
+			if !utxos.contains(&id) {
+				return false;
+			}
+			let utxo = utxos.remove(id);
+			available += utxo.value;
+		}
+
+		for (i, output) in self.outputs.iter().cloned().enumerate() {
+			if available < output.value {
+				return false;
+			}
+			available -= output.value;
+			utxos.add(UTXOID(txid, i as u32), output);
+		}
+		utxos.tx_fee += available;
+
+		true
+	}
+
+	pub fn compute_hash(&self) -> Sha256 {
+		compute_double_sha256(&*serialize(self).unwrap())
 	}
 }
 
