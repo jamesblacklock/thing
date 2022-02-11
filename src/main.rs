@@ -132,6 +132,7 @@ enum ApplicationMessage {
 	ShowHeader(String),
 	ShowBlock(String),
 	ShowTx(String),
+	ShowUTXOs,
 	Shutdown,
 }
 
@@ -326,10 +327,7 @@ impl Node {
 	}
 
 	fn handle_block_message(&mut self, _peer_index: usize, block: Block) -> Result<()> {
-		if self.block_db.blocks_validated == 2817 {
-			println!();
-		}
-		if let ValidationResult::Valid(diff) = block.validate(&mut self.utxos) {
+		if let ValidationResult::Valid(diff) = block.validate(&mut self.utxos, self.block_db.blocks_validated) {
 			self.block_db.store_block(block)?;
 			diff.apply(&mut self.utxos);
 			self.block_db.blocks_validated += 1;
@@ -436,6 +434,14 @@ impl Node {
 						ApplicationMessage::ShowTx(id) => {
 							Node::show_object(id, |id| self.mempool.txs.get(&id).map(|e| e.clone()));
 						},
+						ApplicationMessage::ShowUTXOs => {
+							if self.utxos.len() == 0 {
+								println!("<empty>");
+							}
+							for (id, utxo) in self.utxos.iter() {
+								println!("{:?}:\n{}\n", id, utxo.to_json());
+							}
+						},
 					}
 					send_cmd_done.send(()).unwrap();
 				}
@@ -477,6 +483,10 @@ impl Node {
 				},
 				["tx", id] => {
 					send_cmd.send(ApplicationMessage::ShowTx(id.into())).unwrap();
+					recv_cmd_done.recv().unwrap();
+				},
+				["utxos"] => {
+					send_cmd.send(ApplicationMessage::ShowUTXOs).unwrap();
 					recv_cmd_done.recv().unwrap();
 				},
 				[] => {},

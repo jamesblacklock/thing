@@ -33,6 +33,7 @@ pub struct UTXOState<'a> {
 	base: &'a HashMap<UTXOID, TxOutput>,
 	added: HashMap<UTXOID, TxOutput>,
 	removed: HashSet<UTXOID>,
+	block_height: usize,
 	pub tx_fee: u64,
 }
 
@@ -48,13 +49,18 @@ pub enum ValidationResult {
 }
 
 impl <'a> UTXOState<'a> {
-	pub fn new(utxos: &'a HashMap<UTXOID, TxOutput>) -> Self {
+	pub fn new(utxos: &'a HashMap<UTXOID, TxOutput>, block_height: usize) -> Self {
 		UTXOState {
 			base: utxos,
 			added: HashMap::new(),
 			removed: HashSet::new(),
+			block_height,
 			tx_fee: 0,
 		}
+	}
+
+	pub fn block_height(&self) -> usize {
+		self.block_height
 	}
 	
 	pub fn contains(&self, id: &UTXOID) -> bool {
@@ -146,12 +152,12 @@ impl Block {
 	}
 
 	#[must_use]
-	pub fn validate(&self, utxos: &mut HashMap<UTXOID, TxOutput>) -> ValidationResult {
+	pub fn validate(&self, utxos: &mut HashMap<UTXOID, TxOutput>, block_height: usize) -> ValidationResult {
 		if Tx::check_merkle_root(&self.txs, self.header.merkle_root) == false {
 			return ValidationResult::Invalid;
 		}
 		
-		let mut state = UTXOState::new(utxos);
+		let mut state = UTXOState::new(utxos, block_height);
 
 		for tx in self.txs.iter().skip(1) {
 			if tx.validate(&mut state, false) == false {

@@ -292,7 +292,12 @@ impl Tx {
 				return false;
 			}
 
-			let mut available = 50 * SAT_PER_COIN + utxos.tx_fee;
+			let mut available = 50 * SAT_PER_COIN;
+			for _ in 0..(utxos.block_height()/210_000) {
+				available /= 2;
+			}
+			
+			available += utxos.tx_fee;
 			for (i, output) in self.outputs.iter().cloned().enumerate() {
 				if available < output.value {
 					return false;
