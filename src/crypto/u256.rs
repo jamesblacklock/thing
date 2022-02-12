@@ -44,6 +44,40 @@ impl u256 {
 		(result, last_borrow != 0)
 	}
 
+	pub fn div_with_remainder(self, other: u256) -> (u256, u256) {
+		if other == 1.into() {
+			return (self, 0.into());
+		} else if other > self {
+			return (0.into(), self);
+		}
+
+		let mut acc = other;
+		let mut next_acc = acc + acc;
+		let mut count = u256::from(1);
+		let mut powers = vec![(acc, 1.into())];
+		while next_acc < self {
+			acc = next_acc;
+			count = count + count;
+			powers.push((acc, count));
+			next_acc = acc + acc;
+		}
+		let (mut n, mut power) = powers.pop().unwrap();
+		while acc < self {
+			next_acc = acc + n;
+			if next_acc > acc && next_acc <= self {
+				count = count + power;
+				acc = next_acc;
+			} else if powers.len() == 0 {
+				return (count, self - acc);
+			} else {
+				(n, power) = powers.pop().unwrap();
+			}
+		}
+		println!("{} {}", acc, self);
+		assert!(acc - self == 0.into());
+		(count, 0.into())
+	}
+
 	pub fn pow(self, other: u256) -> u256 {
 		let mut powers = vec![(self, 1.into())];
 		let mut acc = self;
@@ -170,35 +204,8 @@ impl std::ops::Div for u256 {
 	type Output = u256;
 
 	fn div(self, other: u256) -> u256 {
-		if other == 1.into() {
-			return self;
-		} else if other > self {
-			return 0.into();
-		}
-
-		let mut acc = other;
-		let mut next_acc = acc + acc;
-		let mut count = u256::from(1);
-		let mut powers = vec![(acc, 1.into())];
-		while next_acc < self {
-			acc = next_acc;
-			count = count + count;
-			powers.push((acc, count));
-			next_acc = acc + acc;
-		}
-		let (mut n, mut power) = powers.pop().unwrap();
-		while acc < self {
-			next_acc = acc + n;
-			if next_acc > acc && next_acc <= self {
-				count = count + power;
-				acc = next_acc;
-			} else if powers.len() == 0 {
-				break;
-			} else {
-				(n, power) = powers.pop().unwrap();
-			}
-		}
-		count
+		let (n, _)  = self.div_with_remainder(other);
+		n
 	}
 }
 
@@ -206,11 +213,8 @@ impl std::ops::Rem for u256 {
 	type Output = u256;
 
 	fn rem(self, other: u256) -> u256 {
-		if self < other {
-			self
-		} else {
-			self - self / other * self
-		}
+		let (_, n) = self.div_with_remainder(other);
+		n
 	}
 }
 
@@ -331,5 +335,9 @@ fn test_arithmetic() {
 	assert!(
 		u256::from("0000000000000000010000000000000000000123856276386abababdefaaa334") / 
 		u256::from("00000000000000000000000000000000000000000000010000727272111000bb") ==
-		u256::from("000000000000000000000000000000000000ffff8d8dc118f9e0a95c57a8194c"))
+		u256::from("000000000000000000000000000000000000ffff8d8dc118f9e0a95c57a8194c"));
+	assert!(
+		u256::from("0000000000000000000000008756234895623478527364572893746527839475") %
+		u256::from("0000000000000000000000000000000000378491723647283746713457163456") ==
+		u256::from("00000000000000000000000000000000002a26830d0b01fcda67f4eeb0c70dcb"));
 }
