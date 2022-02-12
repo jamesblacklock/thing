@@ -1,4 +1,8 @@
 use std::fmt;
+use super::*;
+use crate::{
+	json::*,
+};
 
 const OP_0: u8                   = 0;
 const OP_PUSHDATA1: u8           = 76;
@@ -230,7 +234,7 @@ pub enum Op<'a> {
 	INVALIDOPCODE(u8),
 }
 
-fn fmt_data(f: &mut fmt::Formatter, op: &str, data: &[u8]) -> fmt::Result {
+pub fn fmt_data(f: &mut fmt::Formatter, op: &str, data: &[u8]) -> fmt::Result {
 	write!(f, "{}", op)?;
 	for &b in data.iter() {
 		write!(f, "{:02x}", b)?;
@@ -253,12 +257,12 @@ impl <'a> Op<'a> {
 	}
 
 	pub fn data_hex(s: &str) -> Self {
-		let bytes = crate::common::hex_bytes(s).unwrap();
+		let bytes = crate::common::hex_to_bytes(s).unwrap();
 		assert!(bytes.len() <= 75);
 		Op::OWNED_DATA(bytes.to_vec())
 	}
 
-	pub fn append_to(&self, v: &mut Vec<u8>) {
+	pub(super) fn append_to(&self, v: &mut Vec<u8>) {
 		match self {
 			Op::OP_0                => v.push(OP_0),
 			Op::DATA(data)          => {
@@ -395,7 +399,7 @@ impl <'a> Op<'a> {
 		}
 	}
 
-	pub fn next(it: &mut super::ScriptIterator<'a>) -> Self {
+	pub(super) fn next(it: &mut ScriptIterator<'a>) -> Self {
 		let opcode = it.next_u8();
 		match opcode {
 			OP_0                   => Op::OP_0,
@@ -522,6 +526,129 @@ impl <'a> Op<'a> {
 			b                      => Op::INVALIDOPCODE(b),
 		}
 	}
+
+	pub(super) fn affect(&'a self, runtime: &mut ScriptRuntime) {
+		let result = match self {
+			Op::OP_0                => runtime.push_stack(StackObject::Empty),
+			Op::DATA(bytes)         => runtime.push_stack(StackObject::Bytes(bytes.to_vec())),
+			Op::OWNED_DATA(bytes)   => runtime.push_stack(StackObject::Bytes(bytes.clone())),
+			Op::PUSHDATA1(bytes)    => runtime.push_stack(StackObject::Bytes(bytes.to_vec())),
+			Op::PUSHDATA2(bytes)    => runtime.push_stack(StackObject::Bytes(bytes.to_vec())),
+			Op::PUSHDATA4(bytes)    => runtime.push_stack(StackObject::Bytes(bytes.to_vec())),
+			Op::OP_1NEGATE          => runtime.push_stack(StackObject::Int(-1)),
+			Op::RESERVED            => Err(()),
+			Op::OP_1                => runtime.push_stack(StackObject::Int(1)),
+			Op::OP_2                => runtime.push_stack(StackObject::Int(2)),
+			Op::OP_3                => runtime.push_stack(StackObject::Int(3)),
+			Op::OP_4                => runtime.push_stack(StackObject::Int(4)),
+			Op::OP_5                => runtime.push_stack(StackObject::Int(5)),
+			Op::OP_6                => runtime.push_stack(StackObject::Int(6)),
+			Op::OP_7                => runtime.push_stack(StackObject::Int(7)),
+			Op::OP_8                => runtime.push_stack(StackObject::Int(8)),
+			Op::OP_9                => runtime.push_stack(StackObject::Int(9)),
+			Op::OP_10               => runtime.push_stack(StackObject::Int(10)),
+			Op::OP_11               => runtime.push_stack(StackObject::Int(11)),
+			Op::OP_12               => runtime.push_stack(StackObject::Int(12)),
+			Op::OP_13               => runtime.push_stack(StackObject::Int(13)),
+			Op::OP_14               => runtime.push_stack(StackObject::Int(14)),
+			Op::OP_15               => runtime.push_stack(StackObject::Int(15)),
+			Op::OP_16               => runtime.push_stack(StackObject::Int(16)),
+			Op::NOP                 => Ok(()),
+			Op::VER                 => unimplemented!(),
+			Op::IF                  => unimplemented!(),
+			Op::NOTIF               => unimplemented!(),
+			Op::VERIF               => unimplemented!(),
+			Op::VERNOTIF            => unimplemented!(),
+			Op::ELSE                => unimplemented!(),
+			Op::ENDIF               => unimplemented!(),
+			Op::VERIFY              => unimplemented!(),
+			Op::RETURN              => unimplemented!(),
+			Op::TOALTSTACK          => unimplemented!(),
+			Op::FROMALTSTACK        => unimplemented!(),
+			Op::OP_2DROP            => unimplemented!(),
+			Op::OP_2DUP             => unimplemented!(),
+			Op::OP_3DUP             => unimplemented!(),
+			Op::OP_2OVER            => unimplemented!(),
+			Op::OP_2ROT             => unimplemented!(),
+			Op::OP_2SWAP            => unimplemented!(),
+			Op::IFDUP               => unimplemented!(),
+			Op::DEPTH               => unimplemented!(),
+			Op::DROP                => unimplemented!(),
+			Op::DUP                 => unimplemented!(),
+			Op::NIP                 => unimplemented!(),
+			Op::OVER                => unimplemented!(),
+			Op::PICK                => unimplemented!(),
+			Op::ROLL                => unimplemented!(),
+			Op::ROT                 => unimplemented!(),
+			Op::SWAP                => unimplemented!(),
+			Op::TUCK                => unimplemented!(),
+			Op::CAT                 => unimplemented!(),
+			Op::SUBSTR              => unimplemented!(),
+			Op::LEFT                => unimplemented!(),
+			Op::RIGHT               => unimplemented!(),
+			Op::SIZE                => unimplemented!(),
+			Op::INVERT              => unimplemented!(),
+			Op::AND                 => unimplemented!(),
+			Op::OR                  => unimplemented!(),
+			Op::XOR                 => unimplemented!(),
+			Op::EQUAL               => unimplemented!(),
+			Op::EQUALVERIFY         => unimplemented!(),
+			Op::RESERVED1           => unimplemented!(),
+			Op::RESERVED2           => unimplemented!(),
+			Op::OP_1ADD             => unimplemented!(),
+			Op::OP_1SUB             => unimplemented!(),
+			Op::OP_2MUL             => unimplemented!(),
+			Op::OP_2DIV             => unimplemented!(),
+			Op::NEGATE              => unimplemented!(),
+			Op::ABS                 => unimplemented!(),
+			Op::NOT                 => unimplemented!(),
+			Op::OP_0NOTEQUAL        => unimplemented!(),
+			Op::ADD                 => unimplemented!(),
+			Op::SUB                 => unimplemented!(),
+			Op::MUL                 => unimplemented!(),
+			Op::DIV                 => unimplemented!(),
+			Op::MOD                 => unimplemented!(),
+			Op::LSHIFT              => unimplemented!(),
+			Op::RSHIFT              => unimplemented!(),
+			Op::BOOLAND             => unimplemented!(),
+			Op::BOOLOR              => unimplemented!(),
+			Op::NUMEQUAL            => unimplemented!(),
+			Op::NUMEQUALVERIFY      => unimplemented!(),
+			Op::NUMNOTEQUAL         => unimplemented!(),
+			Op::LESSTHAN            => unimplemented!(),
+			Op::GREATERTHAN         => unimplemented!(),
+			Op::LESSTHANOREQUAL     => unimplemented!(),
+			Op::GREATERTHANOREQUAL  => unimplemented!(),
+			Op::MIN                 => unimplemented!(),
+			Op::MAX                 => unimplemented!(),
+			Op::WITHIN              => unimplemented!(),
+			Op::RIPEMD160           => unimplemented!(),
+			Op::SHA1                => unimplemented!(),
+			Op::SHA256              => unimplemented!(),
+			Op::HASH160             => unimplemented!(),
+			Op::HASH256             => unimplemented!(),
+			Op::CODESEPARATOR       => unimplemented!(),
+			Op::CHECKSIG            => check_sig(runtime),
+			Op::CHECKSIGVERIFY      => unimplemented!(),
+			Op::CHECKMULTISIG       => unimplemented!(),
+			Op::CHECKMULTISIGVERIFY => unimplemented!(),
+			Op::NOP1                => Ok(()),
+			Op::CHECKLOCKTIMEVERIFY => unimplemented!(),
+			Op::CHECKSEQUENCEVERIFY => unimplemented!(),
+			Op::NOP4                => Ok(()),
+			Op::NOP5                => Ok(()),
+			Op::NOP6                => Ok(()),
+			Op::NOP7                => Ok(()),
+			Op::NOP8                => Ok(()),
+			Op::NOP9                => Ok(()),
+			Op::NOP10               => Ok(()),
+			Op::INVALIDOPCODE(_)    => unimplemented!(),
+		};
+
+		if let Err(_) = result {
+			runtime.invalid = true;
+		}
+	}
 }
 
 impl <'a> fmt::Display for Op<'a> {
@@ -643,4 +770,14 @@ impl <'a> fmt::Display for Op<'a> {
 			Op::INVALIDOPCODE(b)    => write!(f, "OP_INVALIDOPCODE({})", b),
 		}
 	}
+}
+
+fn check_sig(runtime: &mut ScriptRuntime) -> ScriptResult<()> {
+	let pub_key = runtime.pop_stack()?.to_ecdsa_pubkey()?;
+	let sig     = runtime.pop_stack()?.to_ecdsa_sig()?;
+
+	println!("pubkey: {}", pub_key.to_json());
+	println!("sig:    {}", sig.to_json());
+
+	Ok(())
 }

@@ -75,23 +75,41 @@ impl <'a> Iterator for HexBytesRev<'a> {
 	}
 }
 
-pub fn hex_bytes(s: &str) -> Result<Vec<u8>> {
+pub fn bytes_to_hex(bytes: &[u8]) -> String {
+	bytes_to_hex_impl(bytes.iter().copied())
+}
+
+pub fn bytes_to_hex_le(bytes: &[u8]) -> String {
+	bytes_to_hex_impl(bytes.iter().rev().copied())
+}
+
+pub fn bytes_to_hex_impl<T: Iterator<Item=u8>>(bytes: T) -> String {
+	const NIBBLES: [&str; 16] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f"];
+	let mut s = String::new();
+	for b in bytes {
+		s += NIBBLES[(b >> 4) as usize];
+		s += NIBBLES[(b & 0x0f) as usize];
+	}
+	s
+}
+
+pub fn hex_to_bytes(s: &str) -> Result<Vec<u8>> {
 	let hex = s.as_bytes();
 	if hex.len() % 2 != 0 {
 		return Err(Err::ValueError(format!("the input cannot be converted to bytes")));
 	}
-	hex_bytes_impl(HexBytes::new(hex), vec![0; hex.len()/2])
+	hex_to_bytes_impl(HexBytes::new(hex), vec![0; hex.len()/2])
 }
 
-pub fn hex_bytes_le(s: &str) -> Result<Vec<u8>> {
+pub fn hex_to_bytes_le(s: &str) -> Result<Vec<u8>> {
 	let hex = s.as_bytes();
 	if hex.len() % 2 != 0 {
 		return Err(Err::ValueError(format!("the input cannot be converted to bytes")));
 	}
-	hex_bytes_impl(HexBytesRev::new(hex), vec![0; hex.len()/2])
+	hex_to_bytes_impl(HexBytesRev::new(hex), vec![0; hex.len()/2])
 }
 
-fn hex_bytes_impl<T: Iterator<Item=(u8, u8)>>(hex: T, mut bytes: Vec<u8>) -> Result<Vec<u8>> {
+fn hex_to_bytes_impl<T: Iterator<Item=(u8, u8)>>(hex: T, mut bytes: Vec<u8>) -> Result<Vec<u8>> {
 	fn hexdigit(n: u8) -> Option<u8> {
 		const ZERO: u8 = '0' as u8;
 		const A_UPPER: u8 = 'A' as u8;

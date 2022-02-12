@@ -1,5 +1,3 @@
-#![feature(try_blocks)]
-
 use std::{
 	collections::{HashMap, HashSet},
 	net::{TcpStream},
@@ -17,6 +15,7 @@ mod sha256;
 mod json;
 mod network;
 mod script;
+mod crypto;
 
 use sha256::Sha256;
 
@@ -308,7 +307,7 @@ impl Node {
 			let m = Message::getheaders(&self.block_db.hashes);
 			peer.writer.send(m)?;
 
-			if self.block_db.blocks_requested < 10000 {
+			if self.block_db.blocks_requested < 211_000 {
 				let have = self.block_db.blocks_requested;
 				let need = &self.block_db.hashes[have..have+500];
 				self.block_db.blocks_requested += 500;
@@ -329,6 +328,11 @@ impl Node {
 	fn handle_block_message(&mut self, _peer_index: usize, block: Block) -> Result<()> {
 		if let ValidationResult::Valid(diff) = block.validate(&mut self.utxos, self.block_db.blocks_validated) {
 			self.block_db.store_block(block)?;
+			// if self.block_db.blocks_validated == 91842 {
+			// 	println!("{}", diff.added.values().collect::<Vec<_>>()[0].to_json());
+			// 	println!("{}", self.utxos[diff.added.keys().collect::<Vec<_>>()[0]].to_json());
+			// 	println!();
+			// }
 			diff.apply(&mut self.utxos);
 			self.block_db.blocks_validated += 1;
 		} else {
@@ -421,6 +425,9 @@ impl Node {
 							}
 						},
 						ApplicationMessage::ShowBlockHashes => {
+							if self.block_db.hashes.len() == 0 {
+								println!("<empty>");
+							}
 							for (i, hash) in self.block_db.hashes.iter().take(self.block_db.blocks_requested).enumerate() {
 								println!("{:010}: {}", i, hash);
 							}
@@ -502,7 +509,25 @@ impl Node {
 }
 
 fn main() -> Result<()> {
-	let addrs = std::env::args().skip(1).collect();
-	let node = Node::new(addrs)?;
-	node.run()
+	// let addrs = std::env::args().skip(1).collect();
+	// let node = Node::new(addrs)?;
+	// node.run()
+
+	// use script::*;
+	// let script = Script::builder()
+	// 	.append(Op::data_hex("304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901"))
+	// 	.append(Op::data_hex("0411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3"))
+	// 	.append(Op::CHECKSIG)
+	// 	.build();
+	
+	// let mut runtime = ScriptRuntime::new();
+	// runtime.execute(&script);
+
+	use crypto::u256::*;
+	// let n = u256::from(2);//"0000000000000000000000000000028c787be787b787bd787182732873222222");
+	// let m = u256::from(20);//"0000000000000000000000000000000000000000000039badcef89823789a800");
+	// let q = n + m + o + p;
+	// println!("{:?}", n*m);
+	println!("{:?}", u256::from(7).pow(2632.into()));
+	Ok(())
 }

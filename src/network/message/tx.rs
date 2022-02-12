@@ -145,7 +145,7 @@ impl Default for Input {
 		Input {
 			tx_hash: Sha256::default(),
 			index: 0,
-			unlock: Script::new(Vec::new()),
+			unlock: Script::new(),
 			witness: Vec::new(),
 			sequence: 0xffff_ffff,
 		}
@@ -164,7 +164,7 @@ impl Deserialize for Input {
 		Ok(Input {
 			tx_hash,
 			index,
-			unlock: Script::new(unlock),
+			unlock: Script::from(unlock),
 			witness: Vec::new(),
 			sequence,
 		})
@@ -202,7 +202,7 @@ impl Default for Output {
 	fn default() -> Self {
 		Output {
 			value: 0,
-			lock: Script::new(Vec::new()),
+			lock: Script::new(),
 		}
 	}
 }
@@ -216,7 +216,7 @@ impl Deserialize for Output {
 
 		Ok(Output {
 			value,
-			lock: Script::new(lock),
+			lock: Script::from(lock),
 		})
 	}
 }
@@ -296,7 +296,7 @@ impl Tx {
 			for _ in 0..(utxos.block_height()/210_000) {
 				available /= 2;
 			}
-			
+
 			available += utxos.tx_fee;
 			for (i, output) in self.outputs.iter().cloned().enumerate() {
 				if available < output.value {
@@ -317,6 +317,19 @@ impl Tx {
 			}
 			let utxo = utxos.remove(id);
 			available += utxo.value;
+			
+			{
+				let mut runtime = ScriptRuntime::new();
+				// println!("{} {}", &input.unlock, &utxo.lock);
+
+				runtime.execute(&input.unlock);
+				// println!("{:?}", runtime);
+				runtime.execute(&utxo.lock);
+				// println!("{:?}", runtime);
+				if !runtime.is_valid() {
+					return false;
+				}
+			}
 		}
 
 		for (i, output) in self.outputs.iter().cloned().enumerate() {

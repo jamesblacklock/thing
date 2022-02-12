@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::err::*;
-use crate::common::hex_bytes_le;
+use crate::common::hex_to_bytes_le;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Sha256 {
@@ -43,7 +43,7 @@ impl std::convert::TryFrom<&str> for Sha256 {
 	type Error = crate::err::Err;
 
 	fn try_from(s: &str) -> crate::err::Result<Self> {
-		let digest = hex_bytes_le(s)?;
+		let digest = hex_to_bytes_le(s)?;
 		let digest: [u8; 32] = digest.as_slice()
 			.try_into().map_err(|_| Err::ValueError(format!("the input `{}` cannot be converted to sha256", s)))?;
 		Ok(Sha256::from(digest))
