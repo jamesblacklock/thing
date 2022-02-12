@@ -57,17 +57,23 @@ impl Deserialize for ECDSAPoint {
 			_ => return Err(Err::ValueError("invalid pubkey".to_owned()))
 		};
 
-		// let x = u256::from(x).extend();
-		// let p = ECDSA_PRIME.extend();
-		// (((x * x % p * x % p) + 7.into()) % p);
+		let x = u256::from(x).extend();
+		let p = ECDSA_PRIME.extend();
 
-		// x.pow(3) + 7.into();
-		// y² = x³ + 7
-		unimplemented!();
+		// y² = x³ + 7 mod p
+		let y2 = (x.pow_mod(3.into(), p) + 7.into()) % p;
+
+		// from an online source: "Secp256k1 is chosen in a special way so that the square root of y is y²^((p+1)/4)"
+		let exp = (p + 1.into()) / 4.into();
+		let mut y = y2.pow_mod(exp, p);
+		
+		if y_is_odd != y.is_odd() {
+			y = (p - y) % p;
+		}
 
 		Ok(ECDSAPoint {
-			x: x.into(),
-			y: y.into(),
+			x: x.truncate(),
+			y: y.truncate(),
 		})
 	}
 }
@@ -147,5 +153,21 @@ impl Deserialize for ECDSASig {
 		let hash_type = read_u8(stream)?.try_into()?;
 
 		Ok(ECDSASig{s, r, hash_type})
+	}
+}
+
+#[test]
+fn decompress_pub_keys() {
+	// first item: compressed pub key (i.e. x coord preceded by 0x04)
+	// second item: y coord
+	let keys = [
+		("02b4632d08485ff1df2db55b9dafd23347d1c47a457072a1e87be26896549a8737", "8ec38ff91d43e8c2092ebda601780485263da089465619e0358a5c1be7ac91f4"),
+		("0229b3e0919adc41a316aad4f41444d9bf3a9b639550f2aa735676ffff25ba3898", "d6881e81d2e0163348ff07b3a9a3968401572aa79c79e7edb522f41addc8e6ce"),
+		("02f15446771c5c585dd25d8d62df5195b77799aa8eac2f2196c54b73ca05f72f27", "4d335b71c85e064f80191e1f7e2437afa676a3e2a5a5fafcf0d27940cd33e4b4"),
+	];
+
+	for (compressed, expected_y) in keys {
+		let key = ECDSAPubKey::deserialize(&mut &*hex_to_bytes(compressed).unwrap()).unwrap();
+		assert!(u256::from(expected_y) == key.y);
 	}
 }

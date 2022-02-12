@@ -23,6 +23,10 @@ impl u512 {
 		unsafe { std::slice::from_raw_parts(std::mem::transmute(&self.0[0]), 64) }
 	}
 
+	pub fn is_odd(&self) -> bool {
+		return self.0[0] & 1 != 0;
+	}
+
 	pub fn overflowing_add(self, other: u512) -> (u512, bool) {
 		let mut result = u512::default();
 		let mut last_carry = 0;
@@ -85,6 +89,14 @@ impl u512 {
 	}
 
 	pub fn pow(self, other: u512) -> u512 {
+		self.pow_impl(other, None)
+	}
+	
+	pub fn pow_mod(self, other: u512, modulo: u512) -> u512 {
+		self.pow_impl(other, Some(modulo))
+	}
+
+	fn pow_impl(self, other: u512, modulo: Option<u512>) -> u512 {
 		let mut powers = vec![(self, 1.into())];
 		let mut acc = self;
 		let mut count = u512::from(1);
@@ -92,6 +104,7 @@ impl u512 {
 		while next_count > count && next_count < other {
 			count = next_count;
 			acc = acc * acc;
+			if let Some(modulo) = modulo { acc = acc % modulo; }
 			powers.push((acc, count));
 			next_count = count * 2.into();
 		}
@@ -100,6 +113,7 @@ impl u512 {
 			next_count = count + power;
 			if next_count > count && next_count <= other {
 				acc = acc * n;
+				if let Some(modulo) = modulo { acc = acc % modulo; }
 				count = next_count;
 			} else if powers.len() == 0 {
 				break;
