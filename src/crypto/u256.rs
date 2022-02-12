@@ -22,6 +22,10 @@ impl u256 {
 	pub fn extend(self) -> u512 {
 		u512::from_u256_raw(self.0)
 	}
+
+	pub fn sign_extend(self) -> i512 {
+		i512::from_u256_raw(self.0)
+	}
 }
 
 impl Default for u256 {

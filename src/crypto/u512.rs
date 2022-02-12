@@ -2,7 +2,6 @@ use std::fmt;
 use crate::{
 	err::*,
 	common::*,
-	sha256::*,
 };
 use super::u256::*;
 
@@ -131,6 +130,19 @@ impl Default for u512 {
 	}
 }
 
+impl TryFrom<&[u8]> for u512 {
+	type Error = Err;
+
+	fn try_from(bytes: &[u8]) -> Result<Self> {
+		if bytes.len() != 64 {
+			return Err(Err::ValueError("cannot convert to u512".to_owned()));
+		}
+		let mut ints: [u64; 8] = [0; 8];
+		ints.copy_from_slice(unsafe { std::slice::from_raw_parts(std::mem::transmute(&bytes[0]), 8) });
+		Ok(u512(ints))
+	}
+}
+
 impl From<u64> for u512 {
 	fn from(n: u64) -> u512 {
 		u512([n, 0, 0, 0, 0, 0, 0, 0])
@@ -139,7 +151,16 @@ impl From<u64> for u512 {
 
 impl From<&str> for u512 {
 	fn from(s: &str) -> Self {
-		u256::from(s).extend()
+		if s.len() == 64 {
+			u256::from(s).extend()
+		} else {
+			if let Ok(n) = hex_to_bytes_le(s) {
+				if let Ok(n) = u512::try_from(&*n) {
+					return n;
+				}
+			}
+			panic!("could not convert string to u512");
+		}
 	}
 }
 
@@ -290,6 +311,179 @@ impl fmt::Display for u512 {
 	}
 }
 
+#[allow(non_camel_case_types)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct i512(u512);
+
+impl i512 {
+	pub const fn from_u256_raw(raw: [u64; 4]) -> Self {
+		let sign = if (raw[3] >> 63) == 0 { 0 } else { 0xffffffff_ffffffff };
+		i512(u512([raw[0], raw[1], raw[2], raw[3], sign, sign, sign, sign]))
+	}
+
+	pub fn truncate(self) -> u256 {
+		self.0.truncate()
+	}
+
+	pub fn sign(&self) -> bool {
+		self.0.0.last().unwrap() >> 63 != 0
+	}
+
+	pub fn abs(&self) -> i512 {
+		if self.sign() {
+			-*self
+		} else {
+			*self
+		}
+	}
+}
+
+impl From<u512> for i512 {
+	fn from(n: u512) -> i512 {
+		i512(n)
+	}
+}
+
+impl Default for i512 {
+	fn default() -> i512 {
+		i512(u512::default())
+	}
+}
+
+impl From<i64> for i512 {
+	fn from(n: i64) -> i512 {
+		let sign = if n >= 0 { 0 } else { 0xffffffff_ffffffff };
+		i512(u512([n as u64, sign, sign, sign, sign, sign, sign, sign]))
+	}
+}
+
+impl TryFrom<&[u8]> for i512 {
+	type Error = Err;
+	fn try_from(bytes: &[u8]) -> Result<Self> {
+		Ok(i512(u512::try_from(bytes)?))
+	}
+}
+
+impl From<&str> for i512 {
+	fn from(s: &str) -> Self {
+		if s.len() == 64 {
+			u256::from(s).sign_extend()
+		} else {
+			i512(u512::from(s))
+		}
+	}
+}
+
+impl std::ops::Add for i512 {
+	type Output = i512;
+	fn add(self, other: i512) -> i512 {
+		i512(self.0 + other.0)
+	}
+}
+
+impl std::ops::Sub for i512 {
+	type Output = i512;
+	fn sub(self, other: i512) -> i512 {
+		i512(self.0 - other.0)
+	}
+}
+
+impl std::ops::Mul for i512 {
+	type Output = i512;
+	fn mul(self, other: i512) -> i512 {
+		let result = i512(self.abs().0 * other.abs().0);
+		if self.sign() ^ other.sign() {
+			-result
+		} else {
+			result
+		}
+	}
+}
+
+impl std::ops::Div for i512 {
+	type Output = i512;
+
+	fn div(self, other: i512) -> i512 {
+		let result = i512(self.abs().0 / other.abs().0);
+		if self.sign() ^ other.sign() {
+			-result
+		} else {
+			result
+		}
+	}
+}
+
+// impl std::ops::Rem for u512 {
+// 	type Output = u512;
+
+// 	fn rem(self, other: u512) -> u512 {
+		
+// 	}
+// }
+
+impl std::ops::Shl<u8> for i512 {
+	type Output = i512;
+	fn shl(self, bits: u8) -> i512 {
+		i512(self.0 << bits)
+	}
+}
+
+impl std::ops::Shr<u8> for i512 {
+	type Output = i512;
+	fn shr(self, bits: u8) -> i512 {
+		let mut result = i512(self.0 >> bits);
+		if self.sign() {
+			let mut n = 1;
+			while (n * 64) < bits as usize {
+				result.0.0[result.0.0.len() - n] = 0xffffffff_ffffffff;
+				n += 1;
+			}
+			result.0.0[result.0.0.len() - n] |= !(0xffffffff_ffffffffu64 >> (bits % 64));
+		}
+		result
+	}
+}
+
+impl std::cmp::Ord for i512 {
+	fn cmp(&self, other: &i512) -> std::cmp::Ordering {
+		if self.sign() && !other.sign() {
+			return std::cmp::Ordering::Less;
+		} else if !self.sign() && other.sign() {
+			return std::cmp::Ordering::Greater;
+		}
+		self.0.cmp(&other.0)
+	}
+}
+
+impl std::cmp::PartialOrd for i512 {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl std::ops::Neg for i512 {
+	type Output = Self;
+
+    fn neg(mut self) -> i512 {
+        for n in 0..self.0.0.len() {
+			self.0.0[n] = !self.0.0[n];
+		}
+		self + 1.into()
+    }
+}
+
+impl fmt::Debug for i512 {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "{}", self.0)
+	}
+}
+
+impl fmt::Display for i512 {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "{}", self.0)
+	}
+}
+
 
 #[test]
 fn test_arithmetic() {
@@ -331,4 +525,19 @@ fn test_arithmetic() {
 		u512::from("0000000000000000000000008756234895623478527364572893746527839475") %
 		u512::from("0000000000000000000000000000000000378491723647283746713457163456") ==
 		u512::from("00000000000000000000000000000000002a26830d0b01fcda67f4eeb0c70dcb"));
+	assert!(
+		u256::from("8000000000000000000000000000000000000000000000000000000000000000").sign_extend() ==
+		i512::from("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8000000000000000000000000000000000000000000000000000000000000000"));
+	assert!(
+		u256::from("8000000000000000000000000000000000000000000000000000000000000000").sign_extend() ==
+		i512::from("8000000000000000000000000000000000000000000000000000000000000000"));
+	assert!(i512::from(-201) < i512::from(-2));
+	assert!(i512::from(201)  > i512::from(-2));
+	assert!(i512::from(-201) < i512::from(2));
+	assert!(i512::from(-2)   < i512::from(2));
+	assert!((i512::from(-17) * 2.into()).0.0[0] == u64::MAX - (34 - 1));
+	assert!((i512::from(422) * i512::from(-800)).0.0[0] == u64::MAX - (337600 - 1));
+	assert!(
+		i512::from("8000000000000000000000000000b00000000000000000000000000000000000") >> 112 ==
+		i512::from("ffffffffffffffffffffffffffff8000000000000000000000000000b0000000"));
 }

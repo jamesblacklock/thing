@@ -4,6 +4,7 @@ use crate::{
 	err::*,
 	common::*,
 	json::*,
+	sha256::Sha256,
 };
 
 use super::u256::u256;
@@ -100,8 +101,8 @@ impl Deserialize for ECDSAPoint {
 // }
 
 pub struct ECDSASig {
-	r: [u8; 32],
-	s: [u8; 32],
+	r: u256,
+	s: u256,
 	hash_type: u8,//HashType,
 }
 
@@ -109,13 +110,34 @@ impl ECDSASig {
 	pub fn hash_type(&self) -> u8 {//HashType {
 		self.hash_type
 	}
+
+	pub fn verify(&self, pub_key: ECDSAPubKey, hash: Sha256) -> bool {
+		// adapted from https://github.com/tlsfuzzer/python-ecdsa/blob/master/src/ecdsa/ecdsa.py (public domain)
+		unimplemented!();
+		// let hash = u256::from(hash).extend();
+		// let g = ECDSA_BASE;
+		// let n = ECDSA_ORDER.extend();
+		// let r = self.r.extend();
+		// let s = self.s.extend();
+		// if r < 1.into() || r > n - 1.into() {
+		// 	return false;
+		// } else if s < 1.into() || s > n - 1.into() {
+		// 	return false
+		// }
+		// let c = s.inverse_mod(s, n);
+		// let u1 = (hash * c) % n;
+		// let u2 = (r * c) % n;
+		// let point = u1 * g + u2 * pub_key;
+		// let v = point.x % n;
+		// v == r
+	}
 }
 
 impl ToJson for ECDSASig {
 	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
-			("s", JsonValue::string(bytes_to_hex(&self.s))),
-			("r", JsonValue::string(bytes_to_hex(&self.r))),
+			("s", JsonValue::string(format!("{}", self.s))),
+			("r", JsonValue::string(format!("{}", self.r))),
 			// ("hash_type", JsonValue::string(format!("{:?}", self.hash_type))),
 			("hash_type", JsonValue::number(self.hash_type)),
 		])
@@ -159,7 +181,7 @@ impl Deserialize for ECDSASig {
 
 		let hash_type = read_u8(stream)?;//.try_into()?;
 
-		Ok(ECDSASig{s, r, hash_type})
+		Ok(ECDSASig{s: s.into(), r: r.into(), hash_type})
 	}
 }
 
