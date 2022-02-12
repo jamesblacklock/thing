@@ -3,6 +3,7 @@ pub enum Err {
     IOError(String),
     NetworkError(String),
     ValueError(String),
+    ScriptError(String),
 }
 
 pub type Result<T> = std::result::Result<T, Err>;
@@ -13,6 +14,7 @@ impl std::fmt::Debug for Err {
             Err::IOError(message) => write!(f, "{}", message),
             Err::NetworkError(message) => write!(f, "{}", message),
             Err::ValueError(message) => write!(f, "{}", message),
+            Err::ScriptError(message) => write!(f, "{}", message),
         }
     }
 }
@@ -23,6 +25,7 @@ impl std::fmt::Display for Err {
             Err::IOError(message) => write!(f, "{}", message),
             Err::NetworkError(message) => write!(f, "{}", message),
             Err::ValueError(message) => write!(f, "{}", message),
+            Err::ScriptError(message) => write!(f, "{}", message),
         }
     }
 }

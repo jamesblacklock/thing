@@ -78,31 +78,37 @@ impl Deserialize for ECDSAPoint {
 	}
 }
 
-#[derive(Debug)]
-pub enum HashType {
-	SigHashAll = 0x01,
-	SigHashNone = 0x02,
-	SigHashSingle = 0x03,
-	SigHashAnyoneCanPay = 0x80,
-}
+// #[derive(Debug)]
+// pub enum HashType {
+// 	SigHashAll = 0x01,
+// 	SigHashNone = 0x02,
+// 	SigHashSingle = 0x03,
+// 	SigHashAnyoneCanPay = 0x80,
+// }
 
-impl TryFrom<u8> for HashType {
-	type Error = Err;
-	fn try_from(n: u8) -> Result<Self> {
-		match n {
-			0x01 => Ok(HashType::SigHashAll),
-			0x02 => Ok(HashType::SigHashNone),
-			0x03 => Ok(HashType::SigHashSingle),
-			0x80 => Ok(HashType::SigHashAnyoneCanPay),
-			_ => Err(Err::ValueError("invalid hash type".to_owned()))
-		}
-	}
-}
+// impl TryFrom<u8> for HashType {
+// 	type Error = Err;
+// 	fn try_from(n: u8) -> Result<Self> {
+// 		match n {
+// 			0x01 => Ok(HashType::SigHashAll),
+// 			0x02 => Ok(HashType::SigHashNone),
+// 			0x03 => Ok(HashType::SigHashSingle),
+// 			0x80 => Ok(HashType::SigHashAnyoneCanPay),
+// 			_ => Err(Err::ValueError("invalid hash type".to_owned()))
+// 		}
+// 	}
+// }
 
 pub struct ECDSASig {
 	r: [u8; 32],
 	s: [u8; 32],
-	hash_type: HashType,
+	hash_type: u8,//HashType,
+}
+
+impl ECDSASig {
+	pub fn hash_type(&self) -> u8 {//HashType {
+		self.hash_type
+	}
 }
 
 impl ToJson for ECDSASig {
@@ -110,7 +116,8 @@ impl ToJson for ECDSASig {
 		JsonValue::object([
 			("s", JsonValue::string(bytes_to_hex(&self.s))),
 			("r", JsonValue::string(bytes_to_hex(&self.r))),
-			("hash_type", JsonValue::string(format!("{:?}", self.hash_type))),
+			// ("hash_type", JsonValue::string(format!("{:?}", self.hash_type))),
+			("hash_type", JsonValue::number(self.hash_type)),
 		])
 	}
 }
@@ -150,7 +157,7 @@ impl Deserialize for ECDSASig {
 			return Err(Err::ValueError("invalid signature".to_owned()));
 		}
 
-		let hash_type = read_u8(stream)?.try_into()?;
+		let hash_type = read_u8(stream)?;//.try_into()?;
 
 		Ok(ECDSASig{s, r, hash_type})
 	}

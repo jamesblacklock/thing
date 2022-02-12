@@ -2,6 +2,9 @@ use std::fmt;
 use super::*;
 use crate::{
 	json::*,
+	network::Serialize,
+	common::write_u32,
+	sha256::compute_double_sha256,
 };
 
 const OP_0: u8                   = 0;
@@ -536,7 +539,7 @@ impl <'a> Op<'a> {
 			Op::PUSHDATA2(bytes)    => runtime.push_stack(StackObject::Bytes(bytes.to_vec())),
 			Op::PUSHDATA4(bytes)    => runtime.push_stack(StackObject::Bytes(bytes.to_vec())),
 			Op::OP_1NEGATE          => runtime.push_stack(StackObject::Int(-1)),
-			Op::RESERVED            => Err(()),
+			Op::RESERVED            => unimplemented!(),
 			Op::OP_1                => runtime.push_stack(StackObject::Int(1)),
 			Op::OP_2                => runtime.push_stack(StackObject::Int(2)),
 			Op::OP_3                => runtime.push_stack(StackObject::Int(3)),
@@ -772,12 +775,36 @@ impl <'a> fmt::Display for Op<'a> {
 	}
 }
 
-fn check_sig(runtime: &mut ScriptRuntime) -> ScriptResult<()> {
+fn check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
 	let pub_key = runtime.pop_stack()?.to_ecdsa_pubkey()?;
 	let sig     = runtime.pop_stack()?.to_ecdsa_sig()?;
+	
+	let mut tx_copy = runtime.tx.clone();
+	for input in tx_copy.inputs.iter_mut() {
+		input.unlock = Script::new();
+	}
+	
+	tx_copy.inputs[runtime.index].unlock = unimplemented!(); // need to create sub script
 
-	println!("pubkey: {}", pub_key.to_json());
-	println!("sig:    {}", sig.to_json());
+	if sig.hash_type() & 0x1f == 0x02 { // SIGHASH_NONE
+		unimplemented!();
+	} else if sig.hash_type() & 0x1f == 0x03 { // SIGHASH_SINGLE
+		unimplemented!();
+	}
+	if sig.hash_type() & 0x80 != 0 { // SIGHASH_ANYONECANPAY
+		unimplemented!();
+	}
+
+	let serialized: crate::err::Result<_> = try {
+		let mut serialized = Vec::new();
+		tx_copy.serialize(&mut serialized)?;
+		write_u32(&mut serialized, sig.hash_type() as u32)?;
+		serialized
+	};
+
+	let hash = compute_double_sha256(&*serialized?);
+
+	unimplemented!(); // need to check sig
 
 	Ok(())
 }

@@ -7,6 +7,8 @@ use std::{
 use crate::{
 	crypto::ecdsa::*,
 	network::Deserialize,
+	network::message::Tx,
+	err::*,
 };
 
 mod op;
@@ -134,8 +136,6 @@ impl <'a> Iterator for ScriptIterator<'a> {
 	}
 }
 
-pub type ScriptResult<T> = Result<T, ()>;
-
 pub enum StackObject {
 	Empty,
 	Int(i64),
@@ -151,17 +151,17 @@ impl StackObject {
 		}
 	}
 
-	pub fn to_ecdsa_pubkey(&self) -> ScriptResult<ECDSAPubKey> {
+	pub fn to_ecdsa_pubkey(&self) -> Result<ECDSAPubKey> {
 		match self {
-			StackObject::Bytes(bytes) => ECDSAPubKey::deserialize(&mut bytes.as_slice()).or(Err(())),
-			_ => Err(())
+			StackObject::Bytes(bytes) => ECDSAPubKey::deserialize(&mut bytes.as_slice()),
+			_ => Err(Err::ScriptError("could not convert stack object to ECDSA pubkey".to_owned()))
 		}
 	}
 
-	pub fn to_ecdsa_sig(&self) -> ScriptResult<ECDSASig> {
+	pub fn to_ecdsa_sig(&self) -> Result<ECDSASig> {
 		match self {
-			StackObject::Bytes(bytes) => ECDSASig::deserialize(&mut bytes.as_slice()).or(Err(())),
-			_ => Err(())
+			StackObject::Bytes(bytes) => ECDSASig::deserialize(&mut bytes.as_slice()),
+			_ => Err(Err::ScriptError("could not convert stack object to ECDSA sig".to_owned()))
 		}
 	}
 }
@@ -176,14 +176,18 @@ impl fmt::Debug for StackObject {
 	}
 }
 
-pub struct ScriptRuntime {
+pub struct ScriptRuntime<'a> {
+	tx: &'a Tx,
+	index: usize,
 	stack: Vec<StackObject>,
 	invalid: bool,
 }
 
-impl ScriptRuntime {
-	pub fn new() -> Self {
+impl <'a> ScriptRuntime<'a> {
+	pub fn new(tx: &'a Tx, index: usize) -> Self {
 		ScriptRuntime {
+			tx,
+			index,
 			stack: Vec::new(),
 			invalid: false,
 		}
@@ -206,17 +210,17 @@ impl ScriptRuntime {
 		}
 	}
 
-	pub fn push_stack(&mut self, item: StackObject) -> ScriptResult<()> {
+	pub fn push_stack(&mut self, item: StackObject) -> Result<()> {
 		self.stack.push(item);
 		Ok(())
 	}
 
-	pub fn pop_stack(&mut self) -> ScriptResult<StackObject> {
-		self.stack.pop().ok_or(())
+	pub fn pop_stack(&mut self) -> Result<StackObject> {
+		self.stack.pop().ok_or(Err::ScriptError("tried to pop empty stack".to_owned()))
 	}
 }
 
-impl fmt::Debug for ScriptRuntime {
+impl <'a> fmt::Debug for ScriptRuntime<'a> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "stack:\n")?;
 		for item in self.stack.iter() {

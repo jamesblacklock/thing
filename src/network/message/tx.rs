@@ -318,18 +318,18 @@ impl Tx {
 			let utxo = utxos.remove(id);
 			available += utxo.value;
 			
-			{
-				let mut runtime = ScriptRuntime::new();
-				// println!("{} {}", &input.unlock, &utxo.lock);
+			// {
+			// 	let mut runtime = ScriptRuntime::new(&self);
+			// 	// println!("{} {}", &input.unlock, &utxo.lock);
 
-				runtime.execute(&input.unlock);
-				// println!("{:?}", runtime);
-				runtime.execute(&utxo.lock);
-				// println!("{:?}", runtime);
-				if !runtime.is_valid() {
-					return false;
-				}
-			}
+			// 	runtime.execute(&input.unlock);
+			// 	// println!("{:?}", runtime);
+			// 	runtime.execute(&utxo.lock);
+			// 	// println!("{:?}", runtime);
+			// 	if !runtime.is_valid() {
+			// 		return false;
+			// 	}
+			// }
 		}
 
 		for (i, output) in self.outputs.iter().cloned().enumerate() {

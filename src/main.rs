@@ -1,3 +1,5 @@
+#![feature(try_blocks)]
+
 use std::{
 	collections::{HashMap, HashSet},
 	net::{TcpStream},
@@ -378,7 +380,6 @@ impl Node {
 	fn show_object<T, F>(id: String, f: F)
 		where T: ToJson, F: FnOnce(Sha256) -> Option<T> {
 		let found = if let Ok(id) = Sha256::try_from(id.as_str()) {
-			println!("got id: {}", id);
 			if let Some(object) = f(id) {
 				println!("{}", object.to_json());
 				true
@@ -520,7 +521,8 @@ fn main() -> Result<()> {
 		.append(Op::CHECKSIG)
 		.build();
 	
-	let mut runtime = ScriptRuntime::new();
+	let block = BlocksDB::new().load_block(Sha256::try_from("00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee")?)?;
+	let mut runtime = ScriptRuntime::new(&block.txs[1], 1);
 	runtime.execute(&script);
 
 	Ok(())
