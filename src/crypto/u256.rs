@@ -45,7 +45,9 @@ impl u256 {
 	}
 
 	pub fn div_with_remainder(self, other: u256) -> (u256, u256) {
-		if other == 1.into() {
+		if other == 0.into() {
+			panic!("divide by zero");
+		} else if other == 1.into() {
 			return (self, 0.into());
 		} else if other > self {
 			return (0.into(), self);
