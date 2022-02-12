@@ -47,11 +47,6 @@ impl Deserialize for ECDSAPoint {
 				let temp = y.iter().copied().rev().collect::<Vec<_>>();
 				y.copy_from_slice(&temp);
 
-				let test_x = u256::from(x);
-				let test_y = u256::from(y);
-				println!("     y² = {}", test_y * test_y % ECDSA_PRIME);
-				println!("x³ + 7  = {}", (test_x.pow(3.into()) + 7.into()) % ECDSA_PRIME);
-
 				return Ok(ECDSAPoint {
 					x: x.into(),
 					y: y.into(),
@@ -62,7 +57,10 @@ impl Deserialize for ECDSAPoint {
 			_ => return Err(Err::ValueError("invalid pubkey".to_owned()))
 		};
 
-		let x = u256::from(x);
+		// let x = u256::from(x).extend();
+		// let p = ECDSA_PRIME.extend();
+		// (((x * x % p * x % p) + 7.into()) % p);
+
 		// x.pow(3) + 7.into();
 		// y² = x³ + 7
 		unimplemented!();

@@ -513,21 +513,15 @@ fn main() -> Result<()> {
 	// let node = Node::new(addrs)?;
 	// node.run()
 
-	// use script::*;
-	// let script = Script::builder()
-	// 	.append(Op::data_hex("304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901"))
-	// 	.append(Op::data_hex("0411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3"))
-	// 	.append(Op::CHECKSIG)
-	// 	.build();
+	use script::*;
+	let script = Script::builder()
+		.append(Op::data_hex("304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901"))
+		.append(Op::data_hex("0411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3"))
+		.append(Op::CHECKSIG)
+		.build();
 	
-	// let mut runtime = ScriptRuntime::new();
-	// runtime.execute(&script);
+	let mut runtime = ScriptRuntime::new();
+	runtime.execute(&script);
 
-	use crypto::u256::*;
-	// let n = u256::from(2);//"0000000000000000000000000000028c787be787b787bd787182732873222222");
-	// let m = u256::from(20);//"0000000000000000000000000000000000000000000039badcef89823789a800");
-	// let q = n + m + o + p;
-	// println!("{:?}", n*m);
-	println!("{:?}", u256::from(7).pow(2632.into()));
 	Ok(())
 }
