@@ -8,12 +8,21 @@ use crate::{
 
 use super::u256::u256;
 
-pub struct ECDSAPubKey {
+const ECDSA_PRIME: u256 = u256::from_raw([0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xfffffffefffffc2f]);
+const ECDSA_ORDER: u256 = u256::from_raw([0xffffffffffffffff, 0xfffffffffffffffe, 0xbaaedce6af48a03b, 0xbfd25e8cd0364141]);
+const ECDSA_BASE: ECDSAPoint = ECDSAPoint {
+	x: u256::from_raw([0x79be667ef9dcbbac, 0x55a06295ce870b07, 0x029bfcdb2dce28d9, 0x59f2815b16f81798]),
+	y: u256::from_raw([0x483ada7726a3c465, 0x5da4fbfc0e1108a8, 0xfd17b448a6855419, 0x9c47d08ffb10d4b8]),
+};
+
+pub struct ECDSAPoint {
 	x: u256,
 	y: u256,
 }
 
-impl ToJson for ECDSAPubKey {
+pub type ECDSAPubKey = ECDSAPoint;
+
+impl ToJson for ECDSAPoint {
 	fn to_json(&self) -> JsonValue {
 		JsonValue::object([
 			("x", JsonValue::string(format!("{}", self.x))),
@@ -22,18 +31,28 @@ impl ToJson for ECDSAPubKey {
 	}
 }
 
-impl Deserialize for ECDSAPubKey {
+impl Deserialize for ECDSAPoint {
 	fn deserialize(stream: &mut dyn Read) -> Result<Self> {
 		let mut x = [0; 32];
 		let mut y = [0; 32];
 		
 		let header = read_u8(stream)?;
 		read_buf_exact(stream, &mut x)?;
+		let temp = x.iter().copied().rev().collect::<Vec<_>>();
+		x.copy_from_slice(&temp);
 
 		let y_is_odd = match header {
 			0x04 => {
 				read_buf_exact(stream, &mut y)?;
-				return Ok(ECDSAPubKey {
+				let temp = y.iter().copied().rev().collect::<Vec<_>>();
+				y.copy_from_slice(&temp);
+
+				let test_x = u256::from(x);
+				let test_y = u256::from(y);
+				println!("     y² = {}", test_y * test_y % ECDSA_PRIME);
+				println!("x³ + 7  = {}", (test_x.pow(3.into()) + 7.into()) % ECDSA_PRIME);
+
+				return Ok(ECDSAPoint {
 					x: x.into(),
 					y: y.into(),
 				})
@@ -48,7 +67,7 @@ impl Deserialize for ECDSAPubKey {
 		// y² = x³ + 7
 		unimplemented!();
 
-		Ok(ECDSAPubKey {
+		Ok(ECDSAPoint {
 			x: x.into(),
 			y: y.into(),
 		})
