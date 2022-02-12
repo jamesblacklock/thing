@@ -32,26 +32,22 @@ impl u256 {
 		let mut acc = self;
 		let mut count = u256::from(1);
 		let mut next_count = u256::from(2);
-		let mut next = acc * acc;
-		while next > acc && next_count < other {
-			acc = next;
+		while next_count > count && next_count < other {
 			count = next_count;
+			acc = acc * acc;
 			powers.push((acc, count));
-			next = acc * acc;
 			next_count = count * 2.into();
 		}
 		let (mut n, mut power) = powers.pop().unwrap();
-		next_count = count + power;
 		while count < other {
-			if next_count <= other {
+			next_count = count + power;
+			if next_count > count && next_count <= other {
 				acc = acc * n;
 				count = next_count;
-				next_count = next_count + power;
 			} else if powers.len() == 0 {
 				break;
 			} else {
 				(n, power) = powers.pop().unwrap();
-				next_count = count + power;
 			}
 		}
 		acc
@@ -119,8 +115,8 @@ impl std::ops::Mul for u256 {
 	type Output = u256;
 	fn mul(self, other: u256) -> u256 {
 		let mut powers = vec![(self, 1.into())];
-		let mut count = u256::from(1);
 		let mut acc = self;
+		let mut count = u256::from(1);
 		let mut next_count = count + count;
 		while next_count > count && next_count < other {
 			count = next_count;
@@ -215,4 +211,7 @@ fn test_arithmetic() {
 	assert!(
 		u256::from(0xffffffffffffffffu64).pow(4.into()) ==
 		"fffffffffffffffc0000000000000005fffffffffffffffc0000000000000001".into());
+	assert!(
+		u256::from(1781).pow(47001.into()) ==
+		"c369fec67afdbf59284fd836d84f138c5342dc52a45c8cf443f4668ae16b3595".into());
 }
