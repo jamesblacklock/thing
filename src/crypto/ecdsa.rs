@@ -165,7 +165,7 @@ impl Deserialize for ECDSASig {
 
 #[test]
 fn decompress_pub_keys() {
-	// first item: compressed pub key (i.e. x coord preceded by 0x04)
+	// first item: compressed pub key (i.e. x coord preceded by 0x02 or 0x03)
 	// second item: y coord
 	let keys = [
 		("02b4632d08485ff1df2db55b9dafd23347d1c47a457072a1e87be26896549a8737", "8ec38ff91d43e8c2092ebda601780485263da089465619e0358a5c1be7ac91f4"),
