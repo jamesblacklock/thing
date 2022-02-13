@@ -16,12 +16,25 @@ const ECDSA_BASE: ECDSAPoint = ECDSAPoint {
 	y: u256::from_raw_le([0x9c47d08ffb10d4b8, 0xfd17b448a6855419, 0x5da4fbfc0e1108a8, 0x483ada7726a3c465]),
 };
 
+#[derive(Clone)]
 pub struct ECDSAPoint {
 	x: u256,
 	y: u256,
 }
 
-pub type ECDSAPubKey = ECDSAPoint;
+impl std::ops::Mul<ECDSAPoint> for i512 {
+	type Output = ECDSAPoint;
+	fn mul(self, point: ECDSAPoint) -> ECDSAPoint {
+		unimplemented!()
+	}
+}
+
+impl std::ops::Add for ECDSAPoint {
+	type Output = ECDSAPoint;
+	fn add(self, other: ECDSAPoint) -> ECDSAPoint {
+		unimplemented!()
+	}
+}
 
 impl ToJson for ECDSAPoint {
 	fn to_json(&self) -> JsonValue {
@@ -32,7 +45,37 @@ impl ToJson for ECDSAPoint {
 	}
 }
 
-impl Deserialize for ECDSAPoint {
+pub struct ECDSAPubKey(ECDSAPoint);
+
+impl ECDSAPubKey {
+	pub fn verify(&self, sig: ECDSASig, hash: Sha256) -> bool {
+		// adapted from https://github.com/tlsfuzzer/python-ecdsa/blob/master/src/ecdsa/ecdsa.py (public domain)
+		let hash: i512 = hash.to_u256().resize_signed();
+		let g = ECDSA_BASE;
+		let n: i512 = ECDSA_ORDER.resize_signed();
+		let r: i512 = sig.r.resize_signed();
+		let s: i512 = sig.s.resize_signed();
+		if r < 1.into() || r > n - 1.into() {
+			return false;
+		} else if s < 1.into() || s > n - 1.into() {
+			return false;
+		}
+		let c = s.mod_inv(n).unwrap();
+		let u1 = (hash * c) % n;
+		let u2 = (r * c) % n;
+		let point = u1 * g + u2 * self.0.clone();
+		let v = point.x % ECDSA_ORDER;
+		v == r.to_unsigned().resize()
+	}
+}
+
+impl ToJson for ECDSAPubKey {
+	fn to_json(&self) -> JsonValue {
+		self.0.to_json()
+	}
+}
+
+impl Deserialize for ECDSAPubKey {
 	fn deserialize(stream: &mut dyn Read) -> Result<Self> {
 		let mut x = [0; 32];
 		let mut y = [0; 32];
@@ -48,10 +91,10 @@ impl Deserialize for ECDSAPoint {
 				let temp = y.iter().copied().rev().collect::<Vec<_>>();
 				y.copy_from_slice(&temp);
 
-				return Ok(ECDSAPoint {
+				return Ok(ECDSAPubKey(ECDSAPoint {
 					x: x.into(),
 					y: y.into(),
-				})
+				}))
 			},
 			0x03 => true,
 			0x02 => false,
@@ -72,10 +115,10 @@ impl Deserialize for ECDSAPoint {
 			y = (p - y) % p;
 		}
 
-		Ok(ECDSAPoint {
+		Ok(ECDSAPubKey(ECDSAPoint {
 			x: x.resize(),
 			y: y.resize(),
-		})
+		}))
 	}
 }
 
@@ -109,27 +152,6 @@ pub struct ECDSASig {
 impl ECDSASig {
 	pub fn hash_type(&self) -> u8 {//HashType {
 		self.hash_type
-	}
-
-	pub fn verify(&self, pub_key: ECDSAPubKey, hash: Sha256) -> bool {
-		// adapted from https://github.com/tlsfuzzer/python-ecdsa/blob/master/src/ecdsa/ecdsa.py (public domain)
-		unimplemented!();
-		// let hash = u256::from(hash).extend();
-		// let g = ECDSA_BASE;
-		// let n = ECDSA_ORDER.extend();
-		// let r = self.r.extend();
-		// let s = self.s.extend();
-		// if r < 1.into() || r > n - 1.into() {
-		// 	return false;
-		// } else if s < 1.into() || s > n - 1.into() {
-		// 	return false
-		// }
-		// let c = s.inverse_mod(s, n);
-		// let u1 = (hash * c) % n;
-		// let u2 = (r * c) % n;
-		// let point = u1 * g + u2 * pub_key;
-		// let v = point.x % n;
-		// v == r
 	}
 }
 
@@ -197,6 +219,6 @@ fn decompress_pub_keys() {
 
 	for (compressed, expected_y) in keys {
 		let key = ECDSAPubKey::deserialize(&mut &*hex_to_bytes(compressed).unwrap()).unwrap();
-		assert!(u256::hex(expected_y) == key.y);
+		assert!(u256::hex(expected_y) == key.0.y);
 	}
 }
