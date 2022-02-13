@@ -183,13 +183,13 @@ impl <const W: usize> UnsignedBigInt<W> {
 		write!(f, "{}", chars.iter().collect::<String>())
 	}
 
-	fn from_u64(n: u64) -> Self {
+	pub fn from_u64(n: u64) -> Self {
 		let mut result = UnsignedBigInt::<W>([0; W]);
 		result.0[0] = n;
 		result
 	}
 
-	fn hex(s: &str) -> Self {
+	pub fn hex(s: &str) -> Self {
 		let bytes = crate::common::hex_to_bytes_le(s).unwrap();
 		let mut arr = [0u64; W];
 		for (i, chunk) in bytes.chunks(8).enumerate() {
@@ -202,7 +202,7 @@ impl <const W: usize> UnsignedBigInt<W> {
 		Self(arr)
 	}
 
-	fn dec(s: &str) -> Self {
+	pub fn dec(s: &str) -> Self {
 		let mut acc = Self::default();
 		for c in s.chars() {
 			if !('0'..='9').contains(&c) {
@@ -632,6 +632,19 @@ impl <const W: usize> fmt::LowerHex for SignedBigInt<W> {
 impl <const W: usize> fmt::UpperHex for SignedBigInt<W> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		fmt::UpperHex::fmt(&self.0, f)
+	}
+}
+
+
+impl From<[u8; 32]> for u256 {
+	fn from(bytes: [u8; 32]) -> u256 {
+		Self(unsafe { std::mem::transmute(bytes) })
+	}
+}
+
+impl From<[u8; 32]> for i256 {
+	fn from(bytes: [u8; 32]) -> i256 {
+		Self(unsafe { std::mem::transmute(bytes) })
 	}
 }
 
