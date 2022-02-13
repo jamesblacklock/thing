@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 use crate::err::*;
-use crate::sha256::*;
+use crate::crypto::sha256::*;
 use crate::network::Serialize;
 
 pub const SAT_PER_COIN: u64 = 100_000_000;

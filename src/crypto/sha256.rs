@@ -28,6 +28,10 @@ impl Sha256 {
 	pub fn as_bytes<'a>(&'a self) -> &'a[u8] {
 		unsafe { std::slice::from_raw_parts(std::mem::transmute(&self.digest[0]), 32)}
 	}
+
+	pub fn to_u256(&self) -> super::big_int::u256 {
+		super::big_int::u256::from_raw_le(unsafe { std::mem::transmute(self.digest) })
+	}
 }
 
 impl std::convert::From<[u8; 32]> for Sha256 {
@@ -50,11 +54,11 @@ impl std::convert::TryFrom<&str> for Sha256 {
 	}
 }
 
-impl <'a> std::convert::From<&'a Sha256> for &'a [u8] {
-	fn from(sha256: &'a Sha256) -> Self {
-		sha256.as_bytes()
-	}
-}
+// impl <'a> std::convert::From<&'a Sha256> for &'a [u8] {
+// 	fn from(sha256: &'a Sha256) -> Self {
+// 		sha256.as_bytes()
+// 	}
+// }
 
 impl fmt::Debug for Sha256 {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -231,5 +235,5 @@ pub fn compute_sha256<'a, T: Into<&'a [u8]>>(message: T) -> Sha256 {
 
 pub fn compute_double_sha256<'a, T: Into<&'a [u8]>>(message: T) -> Sha256 {
 	let sha256 = compute_sha256(message);
-	compute_sha256(&sha256)
+	compute_sha256(sha256.as_bytes())
 }

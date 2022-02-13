@@ -4,7 +4,7 @@ use crate::{
 	json::*,
 	network::Serialize,
 	common::write_u32,
-	sha256::compute_double_sha256,
+	crypto::sha256::compute_double_sha256,
 };
 
 const OP_0: u8                   = 0;

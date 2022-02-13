@@ -23,12 +23,20 @@ impl <const W: usize> UnsignedBigInt<W> {
 		UnsignedBigInt(raw)
 	}
 
+	pub fn to_signed(self) -> SignedBigInt<W> {
+		SignedBigInt(self)
+	}
+
 	pub fn resize<const X: usize>(self) -> UnsignedBigInt<X> {
 		let mut arr = [0; X];
 		for i in 0..(std::cmp::min(X, W)) {
 			arr[i] = self.0[i];
 		}
-		UnsignedBigInt::<X>(arr)
+		UnsignedBigInt(arr)
+	}
+
+	pub fn resize_signed<const X: usize>(self) -> SignedBigInt<X> {
+		self.to_signed().resize()
 	}
 
 	pub fn truncate(self) -> u64 {
@@ -43,23 +51,13 @@ impl <const W: usize> UnsignedBigInt<W> {
 		self.0[0] & 1 != 0
 	}
 
-	// pub fn gcd(self, other: Self) -> Self {
-	// 	self.gcd_ext(other).0
-	// }
-
-	// pub fn gcd_ext(self, other: Self) -> (Self, SignedBigInt<W>, SignedBigInt<W>) {
-	// 	let (mut a,  mut b)   = (self, other);
-	// 	let (mut x,  mut y)   = (1.into(), 0.into());
-	// 	let (mut x1, mut y1) = (y, x);
-
-	// 	while b != 0.into() {
-	// 		let q: i512 = (a / b).into();
-	// 		(x, x1) = (x1, x - q * x1);
-	// 		(y, y1) = (y1, y - q * y1);
-	// 		(a, b) = (b, a % b);
-	// 	}
-	// 	(a, x, y)
-	// }
+	pub fn gcd(self, other: Self) -> Self {
+		let (mut a, mut b) = (self, other);
+		while b != 0.into() {
+			(a, b) = (b, a % b);
+		}
+		a
+	}
 
 	pub fn overflowing_add(self, other: Self) -> (Self, bool) {
 		let mut result = Self::default();
@@ -187,7 +185,7 @@ impl <const W: usize> UnsignedBigInt<W> {
 	}
 
 	pub fn from_u64(n: u64) -> Self {
-		let mut result = UnsignedBigInt::<W>([0; W]);
+		let mut result = UnsignedBigInt([0; W]);
 		result.0[0] = n;
 		result
 	}
@@ -221,12 +219,6 @@ impl <const W: usize> UnsignedBigInt<W> {
 impl <const W: usize> Default for UnsignedBigInt<W> {
 	fn default() -> Self {
 		Self([0; W])
-	}
-}
-
-impl <const W: usize> From<SignedBigInt<W>> for UnsignedBigInt<W> {
-	fn from(n: SignedBigInt<W>) -> UnsignedBigInt<W> {
-		n.0
 	}
 }
 
@@ -398,8 +390,12 @@ impl <const W: usize> fmt::UpperHex for UnsignedBigInt<W> {
 }
 
 impl <const W: usize> SignedBigInt<W> {
-	pub const fn from_raw_be(raw: [u64; W]) -> Self {
-		Self(UnsignedBigInt::<W>(raw))
+	pub const fn from_raw_le(raw: [u64; W]) -> Self {
+		Self(UnsignedBigInt(raw))
+	}
+
+	pub fn to_unsigned(self) -> UnsignedBigInt<W> {
+		self.0
 	}
 
 	pub fn resize<const X: usize>(self) -> SignedBigInt<X> {
@@ -408,7 +404,7 @@ impl <const W: usize> SignedBigInt<W> {
 		for i in 0..(std::cmp::min(X, W)) {
 			arr[i] = self.0.0[i];
 		}
-		SignedBigInt::<X>(UnsignedBigInt::<X>(arr))
+		SignedBigInt(UnsignedBigInt(arr))
 	}
 
 	pub fn truncate(self) -> i64 {
@@ -449,8 +445,6 @@ impl <const W: usize> SignedBigInt<W> {
 		while y != 0.into() {
 			let (q, r) = (x / y, x % y);
 			let (c, d) = (a0 - q * a1, b0 - q * b1);
-			println!("{} - {} * {} = {}", a0, q, a1, c);
-	
 			x = y;
 			y = r;
 			a0 = a1;
@@ -459,6 +453,15 @@ impl <const W: usize> SignedBigInt<W> {
 			b1 = d;
 		}
 		(x, a0, b0)
+	}
+
+	pub fn mod_inv(self, other: Self) -> Option<Self> {
+		let (d, x, y) = self.egcd(other);
+		if d != 1.into() {
+			None
+		} else {
+			Some(x)
+		}
 	}
 
 	pub fn overflowing_add(self, other: Self) -> (Self, bool) {
@@ -500,13 +503,13 @@ impl <const W: usize> SignedBigInt<W> {
 
 	pub fn from_i64(n: i64) -> Self {
 		let sign = if n >= 0 { 0 } else { 0xffffffff_ffffffff };
-		let mut result = Self(UnsignedBigInt::<W>([sign; W]));
+		let mut result = Self(UnsignedBigInt([sign; W]));
 		result.0.0[0] = n as u64;
 		result
 	}
 
 	pub fn hex(s: &str) -> Self {
-		Self(UnsignedBigInt::<W>::hex(s))
+		Self(UnsignedBigInt::hex(s))
 	}
 
 	pub fn dec(s: &str) -> Self {
@@ -515,17 +518,11 @@ impl <const W: usize> SignedBigInt<W> {
 		} else {
 			(s, false)
 		};
-		let mut res = Self(UnsignedBigInt::<W>::dec(chars));
+		let mut res = Self(UnsignedBigInt::dec(chars));
 		if sign {
 			res = -res;
 		}
 		res
-	}
-}
-
-impl <const W: usize> From<UnsignedBigInt<W>> for SignedBigInt<W> {
-	fn from(n: UnsignedBigInt<W>) -> SignedBigInt<W> {
-		Self(n)
 	}
 }
 
@@ -720,13 +717,13 @@ fn test_arithmetic() {
 		u512::hex("0000000000000000000000000000000000378491723647283746713457163456") ==
 		u512::hex("00000000000000000000000000000000002a26830d0b01fcda67f4eeb0c70dcb"));
 	assert!(
-		i256::from(u256::hex("8000000000000000000000000000000000000000000000000000000000000000")).resize() ==
+		u256::hex("8000000000000000000000000000000000000000000000000000000000000000").to_signed().resize() ==
 		i512::hex("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8000000000000000000000000000000000000000000000000000000000000000"));
 	assert!(i512::from(-201) < i512::from(-2));
 	assert!(i512::from(201)  > i512::from(-2));
 	assert!(i512::from(-201) < i512::from(2));
 	assert!(i512::from(-2)   < i512::from(2));
-	assert!((i512::from(-17) * 2.into()).0.0[0] == u64::MAX - (34 - 1));
+	assert!((i512::from(-17) * i512::from(2)).0.0[0] == u64::MAX - (34 - 1));
 	assert!((i512::from(422) * i512::from(-800)).0.0[0] == u64::MAX - (337600 - 1));
 	assert!(
 		i256::hex("8000000000000000000000000000b00000000000000000000000000000000000").resize::<I512>() >> 112 ==

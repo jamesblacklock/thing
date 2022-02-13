@@ -4,10 +4,10 @@ use crate::{
 	err::*,
 	common::*,
 	json::*,
-	sha256::Sha256,
 };
 
 use super::big_int::*;
+use super::sha256::Sha256;
 
 const ECDSA_PRIME: u256 = u256::from_raw_le([0xfffffffefffffc2f, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff]);
 const ECDSA_ORDER: u256 = u256::from_raw_le([0xbfd25e8cd0364141, 0xbaaedce6af48a03b, 0xfffffffffffffffe, 0xffffffffffffffff]);

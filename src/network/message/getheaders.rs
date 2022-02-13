@@ -5,7 +5,7 @@ use std::{
 use crate::{
 	err::*,
 	json::*,
-    sha256::*,
+    crypto::sha256::*,
 };
 
 use crate::common::{

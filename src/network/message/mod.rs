@@ -4,8 +4,8 @@ use std::fmt;
 
 use crate::{
     err::*,
-    sha256::compute_double_sha256,
-    sha256::Sha256,
+    crypto::sha256::compute_double_sha256,
+    crypto::sha256::Sha256,
     json::*,
 };
 

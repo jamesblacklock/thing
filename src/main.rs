@@ -13,13 +13,12 @@ use std::{
 mod log;
 mod err;
 mod common;
-mod sha256;
 mod json;
 mod network;
 mod script;
 mod crypto;
 
-use sha256::Sha256;
+use crypto::sha256::Sha256;
 
 use network::{
 	Peer,

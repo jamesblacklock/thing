@@ -15,7 +15,7 @@ use crate::{
 	},
 	err::*,
 	common::*,
-	sha256::Sha256,
+	crypto::sha256::Sha256,
 	script::*,
 };
 
