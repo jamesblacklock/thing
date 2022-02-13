@@ -26,6 +26,7 @@ pub fn fmt_size(n: usize) -> String {
 struct HexBytes<'a> {
 	slice: &'a [u8],
 	offset: usize,
+	extra_nibble: bool,
 }
 
 impl <'a> HexBytes<'a> {
@@ -33,6 +34,7 @@ impl <'a> HexBytes<'a> {
 		HexBytes {
 			slice,
 			offset: 0,
+			extra_nibble: slice.len() % 2 != 0,
 		}
 	}
 }
@@ -42,6 +44,10 @@ impl <'a> Iterator for HexBytes<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.offset >= self.slice.len() {
 			None
+		} else if self.extra_nibble {
+			self.extra_nibble = false;
+			self.offset += 1;
+			Some(('0' as u8, self.slice[self.offset - 1]))
 		} else {
 			self.offset += 2;
 			Some((self.slice[self.offset - 2], self.slice[self.offset - 1]))
@@ -68,6 +74,9 @@ impl <'a> Iterator for HexBytesRev<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.offset == 0 {
 			None
+		} else if self.offset == 1 {
+			self.offset = 0;
+			Some(('0' as u8, self.slice[0]))
 		} else {
 			self.offset -= 2;
 			Some((self.slice[self.offset], self.slice[self.offset + 1]))
@@ -95,18 +104,14 @@ pub fn bytes_to_hex_impl<T: Iterator<Item=u8>>(bytes: T) -> String {
 
 pub fn hex_to_bytes(s: &str) -> Result<Vec<u8>> {
 	let hex = s.as_bytes();
-	if hex.len() % 2 != 0 {
-		return Err(Err::ValueError(format!("the input cannot be converted to bytes")));
-	}
-	hex_to_bytes_impl(HexBytes::new(hex), vec![0; hex.len()/2])
+	let extra_nibble = (hex.len() % 2 != 0) as usize;
+	hex_to_bytes_impl(HexBytes::new(hex), vec![0; hex.len()/2 + extra_nibble])
 }
 
 pub fn hex_to_bytes_le(s: &str) -> Result<Vec<u8>> {
 	let hex = s.as_bytes();
-	if hex.len() % 2 != 0 {
-		return Err(Err::ValueError(format!("the input cannot be converted to bytes")));
-	}
-	hex_to_bytes_impl(HexBytesRev::new(hex), vec![0; hex.len()/2])
+	let extra_nibble = (hex.len() % 2 != 0) as usize;
+	hex_to_bytes_impl(HexBytesRev::new(hex), vec![0; hex.len()/2 + extra_nibble])
 }
 
 fn hex_to_bytes_impl<T: Iterator<Item=(u8, u8)>>(hex: T, mut bytes: Vec<u8>) -> Result<Vec<u8>> {

@@ -64,7 +64,7 @@ impl Deserialize for ECDSAPoint {
 		// y² = x³ + 7 mod p
 		let y2 = (x.pow_mod(3.into(), p) + 7.into()) % p;
 
-		// from an online source: "Secp256k1 is chosen in a special way so that the square root of y is y²^((p+1)/4)"
+		// from an online source: "Secp256k1 is chosen in a special way so that the square root of y² is y²^((p+1)/4)"
 		let exp = (p + 1.into()) / 4.into();
 		let mut y = y2.pow_mod(exp, p);
 		
