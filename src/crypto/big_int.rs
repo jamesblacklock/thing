@@ -159,6 +159,9 @@ impl <const W: usize> UnsignedBigInt<W> {
 	}
 
 	fn fmt_hex(&self, f: &mut fmt::Formatter, upper: bool, print_leading_zeros: bool) -> fmt::Result {
+		if !print_leading_zeros && *self == 0.into() {
+			return write!(f, "0");
+		}
 		let mut chars = Vec::new();
 		let digits = if upper {
 			['0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F']
@@ -247,6 +250,9 @@ impl <const W: usize> std::ops::Sub for UnsignedBigInt<W> {
 impl <const W: usize> std::ops::Mul for UnsignedBigInt<W> {
 	type Output = Self;
 	fn mul(self, other: Self) -> Self {
+		if self == 0.into() || other == 0.into() {
+			return 0.into();
+		}
 		let mut powers = vec![(self, 1.into())];
 		let mut acc = self;
 		let mut count = Self::from(1);
@@ -365,6 +371,9 @@ impl <const W: usize> fmt::Debug for UnsignedBigInt<W> {
 
 impl <const W: usize> fmt::Display for UnsignedBigInt<W> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		if *self == 0.into() {
+			return write!(f, "0");
+		}
 		let mut chars = Vec::new();
 		let mut temp = *self;
 		while temp > 0.into() {
@@ -426,23 +435,31 @@ impl <const W: usize> SignedBigInt<W> {
 		self.0.is_odd()
 	}
 
-	// pub fn gcd(self, other: Self) -> Self {
-	// 	self.0.gcd_ext(other).0
-	// }
+	pub fn gcd(self, other: Self) -> Self {
+		let (res, _, _) = self.egcd(other);
+		res
+	}
 
-	// pub fn gcd_ext(self, other: Self) -> (Self, SignedBigInt<W>, SignedBigInt<W>) {
-	// 	let (mut a,  mut b)   = (self, other);
-	// 	let (mut x,  mut y)   = (1.into(), 0.into());
-	// 	let (mut x1, mut y1) = (y, x);
-
-	// 	while b != 0.into() {
-	// 		let q: i512 = (a / b).into();
-	// 		(x, x1) = (x1, x - q * x1);
-	// 		(y, y1) = (y1, y - q * y1);
-	// 		(a, b) = (b, a % b);
-	// 	}
-	// 	(a, x, y)
-	// }
+	pub fn egcd(self, other: Self) -> (Self, Self, Self) {
+		// adapted from: https://shirshak55.github.io/articles/gcd-in-rust/#extended-euclid-algorithm
+		let (mut x, mut y) = (self, other);
+		let (mut a0, mut a1, mut b0, mut b1) =
+			(Self::from_i64(1), Self::from_i64(0), Self::from_i64(0), Self::from_i64(1)) ;
+	
+		while y != 0.into() {
+			let (q, r) = (x / y, x % y);
+			let (c, d) = (a0 - q * a1, b0 - q * b1);
+			println!("{} - {} * {} = {}", a0, q, a1, c);
+	
+			x = y;
+			y = r;
+			a0 = a1;
+			a1 = c;
+			b0 = b1;
+			b1 = d;
+		}
+		(x, a0, b0)
+	}
 
 	pub fn overflowing_add(self, other: Self) -> (Self, bool) {
 		let (res, ovf) = self.0.overflowing_add(other.0);
@@ -454,10 +471,20 @@ impl <const W: usize> SignedBigInt<W> {
 		(Self(res), ovf)
 	}
 
-	// pub fn div_with_remainder(self, other: Self) -> (Self, Self) {
-	// 	let (res, rem) = self.0.div_with_remainder(other.0);
-	// 	(Self(res), Self(rem))
-	// }
+	pub fn div_with_remainder(self, other: Self) -> (Self, Self) {
+		let (res, rem) = self.abs().0.div_with_remainder(other.abs().0);
+		let res = if self.sign() ^ other.sign() {
+			-Self(res)
+		} else {
+			Self(res)
+		};
+		let rem = if self.sign() {
+			-Self(rem)
+		} else {
+			Self(rem)
+		};
+		(res, rem)
+	}
 
 	// pub fn pow(self, other: Self) -> Self {
 	// 	Self(self.0.pow(other.0))
@@ -548,13 +575,14 @@ impl <const W: usize> std::ops::Div for SignedBigInt<W> {
 	}
 }
 
-// impl std::ops::Rem for u512 {
-// 	type Output = u512;
+impl <const W: usize> std::ops::Rem for SignedBigInt<W> {
+	type Output = Self;
 
-// 	fn rem(self, other: u512) -> u512 {
-		
-// 	}
-// }
+	fn rem(self, other: Self) -> Self {
+		let (_, res) = self.div_with_remainder(other);
+		res
+	}
+}
 
 impl <const W: usize> std::ops::Shl<u64> for SignedBigInt<W> {
 	type Output = Self;
