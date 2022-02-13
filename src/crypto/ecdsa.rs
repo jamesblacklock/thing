@@ -9,41 +9,134 @@ use crate::{
 use super::big_int::*;
 use super::sha256::Sha256;
 
+// secp256k1​
 const ECDSA_PRIME: u256 = u256::from_raw_le([0xfffffffefffffc2f, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff]);
 const ECDSA_ORDER: u256 = u256::from_raw_le([0xbfd25e8cd0364141, 0xbaaedce6af48a03b, 0xfffffffffffffffe, 0xffffffffffffffff]);
+const ECDSA_A:     u256 = u256::from_raw_le([1, 0, 0, 0]);
+const ECDSA_B:     u256 = u256::from_raw_le([7, 0, 0, 0]);
 const ECDSA_BASE: ECDSAPoint = ECDSAPoint::Coord {
-	x: u256::from_raw_le([0x59f2815b16f81798, 0x029bfcdb2dce28d9, 0x55a06295ce870b07, 0x79be667ef9dcbbac]),
-	y: u256::from_raw_le([0x9c47d08ffb10d4b8, 0xfd17b448a6855419, 0x5da4fbfc0e1108a8, 0x483ada7726a3c465]),
+	x: i256::from_raw_le([0x59f2815b16f81798, 0x029bfcdb2dce28d9, 0x55a06295ce870b07, 0x79be667ef9dcbbac]),
+	y: i256::from_raw_le([0x9c47d08ffb10d4b8, 0xfd17b448a6855419, 0x5da4fbfc0e1108a8, 0x483ada7726a3c465]),
 };
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ECDSAPoint {
-	Coord { x: u256, y: u256 },
+	Coord { x: i256, y: i256 },
 	Infinity,
+}
+
+impl ECDSAPoint {
+	fn tangent(&self, a: u256, p: u256) -> i256 {
+		match self {
+			ECDSAPoint::Infinity       => panic!("point at infinity has no tangent"),
+			ECDSAPoint::Coord { x, y } => {
+				// s = 3x² + a / 2y
+				let x: i512 = x.resize();
+				let y: i512 = y.resize();
+				let a = a.resize_signed();
+				let p = p.resize_signed();
+				((i512::from(3) * x * x + a) * (y << 1).mod_inv(p).unwrap()).modulo(p).resize()
+			}
+		}
+	}
+
+	fn double(&self, a: u256, p: u256) -> ECDSAPoint {
+		match self {
+			ECDSAPoint::Infinity       => self.clone(),
+			ECDSAPoint::Coord { x, y } => {
+				let x = x.resize();
+				let y = y.resize();
+				let tangent: i512 = self.tangent(a, p).resize();
+				let p = p.resize_signed();
+				let new_x = (tangent * tangent - x - x).modulo(p);
+				let new_y = (tangent * (x - new_x) - y).modulo(p);
+				ECDSAPoint::Coord {
+					x: new_x.resize(),
+					y: new_y.resize(),
+				}
+			}
+		}
+	}
+
+	fn add(&self, other: &ECDSAPoint, a: u256, p: u256) -> ECDSAPoint {
+		match (&self, &other) {
+			(&ECDSAPoint::Infinity, _) => other.clone(),
+			(_, &ECDSAPoint::Infinity) => self.clone(),
+			(&ECDSAPoint::Coord { x: px, y: py }, &ECDSAPoint::Coord { x: qx, y: qy }) => {
+				if (px, py) == (qx, qy) {
+					self.double(a, p)
+				} else {
+					let prime = p.resize_signed();
+					let (px, py) = (px.resize::<I512>(), py.resize::<I512>());
+					let (qx, qy) = (qx.resize::<I512>(), qy.resize::<I512>());
+					let slope = ((py - qy) * (px - qx).mod_inv(prime).unwrap()).modulo(prime);
+					let new_x = (slope * slope - px - qx).modulo(prime);
+					let new_y = (slope * (px - new_x) - py).modulo(prime);
+					ECDSAPoint::Coord {
+						x: new_x.resize(),
+						y: new_y.resize(),
+					}
+				}
+			},
+		}
+	}
+
+	fn mul(&self, scalar: u256, a: u256, p: u256) -> ECDSAPoint {
+		match self {
+			&ECDSAPoint::Infinity => unimplemented!(),
+			&ECDSAPoint::Coord {..} => {
+				if scalar == 0.into() {
+					unimplemented!();
+				}
+				let mut powers = vec![(self.clone(), u256::from(1))];
+				let mut acc = self.clone();
+				let mut count = u256::from(1);
+				let mut next_count = count + count;
+				while next_count > count && next_count < scalar {
+					count = next_count;
+					acc = acc.double(a, p);
+					powers.push((acc.clone(), count));
+					next_count = count + count;
+				}
+				let (mut n, mut power) = powers.pop().unwrap();
+				while count < scalar {
+					next_count = count + power;
+					if next_count > count && next_count <= scalar {
+						acc = acc.add(&n, a, p);
+						count = next_count;
+					} else if powers.len() == 0 {
+						break;
+					} else {
+						(n, power) = powers.pop().unwrap();
+					}
+				}
+				acc
+			},
+		}
+	}
 }
 
 impl std::ops::Mul<ECDSAPoint> for i512 {
 	type Output = ECDSAPoint;
 	fn mul(self, point: ECDSAPoint) -> ECDSAPoint {
-		unimplemented!()
+		ECDSAPoint::mul(&point, self.to_unsigned().resize(), ECDSA_A, ECDSA_PRIME)
 	}
 }
 
 impl std::ops::Neg for ECDSAPoint {
 	type Output = ECDSAPoint;
 	fn neg(self) -> ECDSAPoint {
-		unimplemented!()
+		match self {
+			ECDSAPoint::Infinity       => self,
+			ECDSAPoint::Coord { x, y } => ECDSAPoint::Coord { x, y: -y },
+		}
 	}
 }
 
 impl std::ops::Add for ECDSAPoint {
 	type Output = ECDSAPoint;
 	fn add(self, other: ECDSAPoint) -> ECDSAPoint {
-		if self == other {
-			unimplemented!()
-		} else {
-			unimplemented!()
-		}
+		Self::add(&self, &other, ECDSA_A, ECDSA_PRIME)
 	}
 }
 
@@ -60,8 +153,8 @@ impl ToJson for ECDSAPoint {
 }
 
 pub struct ECDSAPubKey {
-	x: u256,
-	y: u256,
+	x: i256,
+	y: i256,
 }
 
 impl ECDSAPubKey {
@@ -82,11 +175,11 @@ impl ECDSAPubKey {
 			return false;
 		}
 		let c = s.mod_inv(n).unwrap();
-		let u1 = (hash * c) % n;
-		let u2 = (r * c) % n;
+		let u1 = (hash * c).modulo(n);
+		let u2 = (r * c).modulo(n);
 		let point = u1 * g + u2 * self.to_point();
-		if let ECDSAPoint::Coord { x, y: _ } = point {
-			let v = x % ECDSA_ORDER;
+		if let ECDSAPoint::Coord { x, .. } = point {
+			let v = x.to_unsigned() % ECDSA_ORDER;
 			v == r.to_unsigned().resize()
 		} else {
 			false
@@ -144,8 +237,8 @@ impl Deserialize for ECDSAPubKey {
 		}
 
 		Ok(ECDSAPubKey {
-			x: x.resize(),
-			y: y.resize(),
+			x: x.resize().to_signed(),
+			y: y.resize().to_signed(),
 		})
 	}
 }
@@ -247,6 +340,45 @@ fn decompress_pub_keys() {
 
 	for (compressed, expected_y) in keys {
 		let key = ECDSAPubKey::deserialize(&mut &*hex_to_bytes(compressed).unwrap()).unwrap();
-		assert!(u256::hex(expected_y) == key.y);
+		assert!(i256::hex(expected_y) == key.y);
+	}
+}
+
+#[test]
+fn tangents() {
+	let points = [
+		(ECDSAPoint::Coord { x: 5.into(), y: 11.into() }, u256::from(2), u256::from(17),   i256::from(12)), 
+		(ECDSAPoint::Coord { x: 1.into(), y:  3.into() }, u256::from(4), u256::from(2773), i256::from(2312)), 
+	];
+
+	for (point, a, p, expected) in points {
+		assert!(expected == point.tangent(a, p));
+	}
+}
+
+#[test]
+fn double_points() {
+	let points = [
+		(ECDSAPoint::Coord { x: 5.into(), y: 11.into() }, u256::from(2), u256::from(17), ECDSAPoint::Coord { x: 15.into(), y: 5.into() }),
+	];
+
+	for (point, a, p, expected) in points {
+		assert!(point.double(a, p) == expected);
+	}
+}
+
+#[test]
+fn add_points() {
+	let points = [
+		(
+			ECDSAPoint::Coord { x: 5.into(), y: 11.into() }, 
+			ECDSAPoint::Coord { x: 15.into(), y: 5.into() },
+			u256::from(2), u256::from(17),
+			ECDSAPoint::Coord { x: 13.into(), y: 4.into() },
+		),
+	];
+
+	for (p, q, a, prime, expected) in points {
+		assert!(p.add(&q, a, prime) == expected);
 	}
 }

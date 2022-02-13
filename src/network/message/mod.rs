@@ -253,7 +253,7 @@ impl Payload {
 			Payload::NotFound => "notfound",
 			Payload::GetBlocks(_) => "getblocks",
 			Payload::GetHeaders(_) => "getheaders",
-			Payload::Tx(_, _) => "tx",
+			Payload::Tx(..) => "tx",
 			Payload::Block(_) => "block",
 			Payload::Headers(_) => "headers",
 			Payload::GetAddr => "getaddr",

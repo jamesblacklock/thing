@@ -1,12 +1,12 @@
 use std::fmt;
 
-const U256: usize = 4;
+pub const U256: usize = 4;
 pub type u256 = UnsignedBigInt<U256>;
-const I256: usize = 4;
+pub const I256: usize = 4;
 pub type i256 = SignedBigInt<I256>;
-const U512: usize = 8;
+pub const U512: usize = 8;
 pub type u512 = UnsignedBigInt<U512>;
-const I512: usize = 8;
+pub const I512: usize = 8;
 pub type i512 = SignedBigInt<I512>;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -357,7 +357,8 @@ impl <const W: usize> std::cmp::PartialOrd for UnsignedBigInt<W> {
 
 impl <const W: usize> fmt::Debug for UnsignedBigInt<W> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		self.fmt_hex(f, false, true)
+		// self.fmt_hex(f, false, true)
+		fmt::Display::fmt(self, f)
 	}
 }
 
@@ -432,7 +433,7 @@ impl <const W: usize> SignedBigInt<W> {
 	}
 
 	pub fn gcd(self, other: Self) -> Self {
-		let (res, _, _) = self.egcd(other);
+		let (res, ..) = self.egcd(other);
 		res
 	}
 
@@ -456,11 +457,23 @@ impl <const W: usize> SignedBigInt<W> {
 	}
 
 	pub fn mod_inv(self, other: Self) -> Option<Self> {
-		let (d, x, y) = self.egcd(other);
+		let (d, x, _) = self.egcd(other);
 		if d != 1.into() {
+			dbg!(self, other, d, x);
 			None
+		} else if x < 0.into() {
+			Some(other + x)
 		} else {
 			Some(x)
+		}
+	}
+
+	pub fn modulo(self, other: Self) -> Self {
+		let (_, rem) = self.div_with_remainder(other);
+		if rem < 0.into() {
+			other + rem
+		} else {
+			rem
 		}
 	}
 
@@ -489,17 +502,23 @@ impl <const W: usize> SignedBigInt<W> {
 		(res, rem)
 	}
 
-	// pub fn pow(self, other: Self) -> Self {
-	// 	Self(self.0.pow(other.0))
-	// }
+	pub fn pow(self, other: Self) -> Self {
+		// if self.sign() && other.is_odd() {
+		// 	-Self(self.abs().0.pow(other))
+		// } else {
+		// 	Self(self.abs().0.pow(other))
+		// }
+		Self(self.0.pow(other.0))
+	}
 	
-	// pub fn pow_mod(self, other: Self, modulo: Self) -> Self {
-	// 	Self(self.0.pow_mod(other.0, modulo.0))
-	// }
-
-	// fn pow_impl(self, other: Self, modulo: Option<Self>) -> Self {
-		
-	// }
+	pub fn pow_mod(self, other: Self, modulo: Self) -> Self {
+	// 	if self.sign() && other.is_odd() {
+	// 		-Self(self.abs().0.pow_mod(other, modulo))
+	// 	} else {
+	// 		Self(self.abs().0.pow_mod(other, modulo))
+	// 	}
+		Self(self.0.pow_mod(other.0, modulo.0))
+	}
 
 	pub fn from_i64(n: i64) -> Self {
 		let sign = if n >= 0 { 0 } else { 0xffffffff_ffffffff };
@@ -633,7 +652,8 @@ impl <const W: usize> std::ops::Neg for SignedBigInt<W> {
 
 impl <const W: usize> fmt::Debug for SignedBigInt<W> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		fmt::Debug::fmt(&self.0, f)
+		// fmt::Debug::fmt(&self.0, f)
+		fmt::Display::fmt(self, f)
 	}
 }
 
