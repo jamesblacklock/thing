@@ -10,32 +10,46 @@ use super::big_int::*;
 use super::sha256::Sha256;
 
 // secp256k1​
-const ECDSA_PRIME: u256 = u256::from_raw_le([0xfffffffefffffc2f, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff]);
-const ECDSA_ORDER: u256 = u256::from_raw_le([0xbfd25e8cd0364141, 0xbaaedce6af48a03b, 0xfffffffffffffffe, 0xffffffffffffffff]);
-const ECDSA_A:     u256 = u256::from_raw_le([1, 0, 0, 0]);
-const ECDSA_B:     u256 = u256::from_raw_le([7, 0, 0, 0]);
-const ECDSA_BASE: ECDSAPoint = ECDSAPoint::Coord {
-	x: i256::from_raw_le([0x59f2815b16f81798, 0x029bfcdb2dce28d9, 0x55a06295ce870b07, 0x79be667ef9dcbbac]),
-	y: i256::from_raw_le([0x9c47d08ffb10d4b8, 0xfd17b448a6855419, 0x5da4fbfc0e1108a8, 0x483ada7726a3c465]),
+// fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f
+pub const ECDSA_PRIME: u256 = u256::from_raw_le([0xfffffffefffffc2f, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff]);
+// fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141
+pub const ECDSA_ORDER: u256 = u256::from_raw_le([0xbfd25e8cd0364141, 0xbaaedce6af48a03b, 0xfffffffffffffffe, 0xffffffffffffffff]);
+pub const ECDSA_A:     u256 = u256::from_raw_le([0, 0, 0, 0]);
+pub const ECDSA_B:     u256 = u256::from_raw_le([7, 0, 0, 0]);
+pub const ECDSA_BASE: ECDSAPoint = ECDSAPoint::Coord {
+	x: u256::from_raw_le([0x59f2815b16f81798, 0x029bfcdb2dce28d9, 0x55a06295ce870b07, 0x79be667ef9dcbbac]),
+	y: u256::from_raw_le([0x9c47d08ffb10d4b8, 0xfd17b448a6855419, 0x5da4fbfc0e1108a8, 0x483ada7726a3c465]),
 };
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ECDSAPoint {
-	Coord { x: i256, y: i256 },
+	Coord { x: u256, y: u256 },
 	Infinity,
 }
 
 impl ECDSAPoint {
-	fn tangent(&self, a: u256, p: u256) -> i256 {
+	pub fn x(&self) -> Option<u256> {
+		match self {
+			&ECDSAPoint::Infinity => None,
+			&ECDSAPoint::Coord { x, y: _ } => Some(x)
+		} 
+	}
+
+	pub fn y(&self) -> Option<u256> {
+		match self {
+			&ECDSAPoint::Infinity => None,
+			&ECDSAPoint::Coord { x: _, y } => Some(y)
+		} 
+	}
+
+	pub fn tangent(&self, a: u256, p: u256) -> u256 {
 		match self {
 			ECDSAPoint::Infinity       => panic!("point at infinity has no tangent"),
-			ECDSAPoint::Coord { x, y } => {
+			&ECDSAPoint::Coord { x, y } => {
 				// s = 3x² + a / 2y
-				let x: i512 = x.resize();
-				let y: i512 = y.resize();
-				let a = a.resize_signed();
-				let p = p.resize_signed();
-				((i512::from(3) * x * x + a) * (y << 1).mod_inv(p).unwrap()).modulo(p).resize()
+				let numerator = x.mul_mod(x, p).mul_mod(3.into(), p).add_mod(a, p);
+				let denominator = y.mul_mod(2.into(), p);
+				numerator.mul_mod(denominator.mod_inv(p), p)
 			}
 		}
 	}
@@ -43,35 +57,30 @@ impl ECDSAPoint {
 	fn double(&self, a: u256, p: u256) -> ECDSAPoint {
 		match self {
 			ECDSAPoint::Infinity       => self.clone(),
-			ECDSAPoint::Coord { x, y } => {
-				let x = x.resize();
-				let y = y.resize();
-				let tangent: i512 = self.tangent(a, p).resize();
-				let p = p.resize_signed();
-				let new_x = (tangent * tangent - x - x).modulo(p);
-				let new_y = (tangent * (x - new_x) - y).modulo(p);
+			&ECDSAPoint::Coord { x, y } => {
+				let tangent = self.tangent(a, p);
+				let new_x = tangent.mul_mod(tangent, p).sub_mod(x, p).sub_mod(x, p);
+				let new_y = tangent.mul_mod(x.sub_mod(new_x, p), p).sub_mod(y, p);
 				ECDSAPoint::Coord {
-					x: new_x.resize(),
-					y: new_y.resize(),
+					x: new_x,
+					y: new_y,
 				}
 			}
 		}
 	}
 
 	fn add(&self, other: &ECDSAPoint, a: u256, p: u256) -> ECDSAPoint {
-		match (&self, &other) {
-			(&ECDSAPoint::Infinity, _) => other.clone(),
-			(_, &ECDSAPoint::Infinity) => self.clone(),
+		match (self, other) {
+			(ECDSAPoint::Infinity, _) => other.clone(),
+			(_, ECDSAPoint::Infinity) => self.clone(),
 			(&ECDSAPoint::Coord { x: px, y: py }, &ECDSAPoint::Coord { x: qx, y: qy }) => {
 				if (px, py) == (qx, qy) {
 					self.double(a, p)
 				} else {
-					let prime = p.resize_signed();
-					let (px, py) = (px.resize::<I512>(), py.resize::<I512>());
-					let (qx, qy) = (qx.resize::<I512>(), qy.resize::<I512>());
-					let slope = ((py - qy) * (px - qx).mod_inv(prime).unwrap()).modulo(prime);
-					let new_x = (slope * slope - px - qx).modulo(prime);
-					let new_y = (slope * (px - new_x) - py).modulo(prime);
+					let prime = p;
+					let slope = py.sub_mod(qy, prime).mul_mod(px.sub_mod(qx, prime).mod_inv(prime), prime);
+					let new_x = slope.mul_mod(slope, prime).sub_mod(px, prime).sub_mod(qx, prime);
+					let new_y = slope.mul_mod(px.sub_mod(new_x, prime), prime).sub_mod(py, prime);
 					ECDSAPoint::Coord {
 						x: new_x.resize(),
 						y: new_y.resize(),
@@ -116,20 +125,10 @@ impl ECDSAPoint {
 	}
 }
 
-impl std::ops::Mul<ECDSAPoint> for i512 {
+impl std::ops::Mul<ECDSAPoint> for u256 {
 	type Output = ECDSAPoint;
 	fn mul(self, point: ECDSAPoint) -> ECDSAPoint {
-		ECDSAPoint::mul(&point, self.to_unsigned().resize(), ECDSA_A, ECDSA_PRIME)
-	}
-}
-
-impl std::ops::Neg for ECDSAPoint {
-	type Output = ECDSAPoint;
-	fn neg(self) -> ECDSAPoint {
-		match self {
-			ECDSAPoint::Infinity       => self,
-			ECDSAPoint::Coord { x, y } => ECDSAPoint::Coord { x, y: -y },
-		}
+		ECDSAPoint::mul(&point, self, ECDSA_A, ECDSA_PRIME)
 	}
 }
 
@@ -153,8 +152,8 @@ impl ToJson for ECDSAPoint {
 }
 
 pub struct ECDSAPubKey {
-	x: i256,
-	y: i256,
+	x: u256,
+	y: u256,
 }
 
 impl ECDSAPubKey {
@@ -164,23 +163,23 @@ impl ECDSAPubKey {
 
 	pub fn verify(&self, sig: ECDSASig, hash: Sha256) -> bool {
 		// adapted from https://github.com/tlsfuzzer/python-ecdsa/blob/master/src/ecdsa/ecdsa.py (public domain)
-		let hash: i512 = hash.to_u256().resize_signed();
+		let hash = hash.to_u256();
 		let g = ECDSA_BASE;
-		let n: i512 = ECDSA_ORDER.resize_signed();
-		let r: i512 = sig.r.resize_signed();
-		let s: i512 = sig.s.resize_signed();
+		let n = ECDSA_ORDER;
+		let r = sig.r;
+		let s = sig.s;
 		if r < 1.into() || r > n - 1.into() {
 			return false;
 		} else if s < 1.into() || s > n - 1.into() {
 			return false;
 		}
-		let c = s.mod_inv(n).unwrap();
-		let u1 = (hash * c).modulo(n);
-		let u2 = (r * c).modulo(n);
+		let c = s.mod_inv(n);
+		let u1 = (hash * c) % n;
+		let u2 = (r * c) % n;
 		let point = u1 * g + u2 * self.to_point();
 		if let ECDSAPoint::Coord { x, .. } = point {
-			let v = x.to_unsigned() % ECDSA_ORDER;
-			v == r.to_unsigned().resize()
+			let v = x % ECDSA_ORDER;
+			v == r.resize()
 		} else {
 			false
 		}
@@ -222,24 +221,22 @@ impl Deserialize for ECDSAPubKey {
 			_ => return Err(Err::ValueError("invalid pubkey".to_owned()))
 		};
 
-		let x: u512 = u256::from(x).resize();
-		let p: u512 = ECDSA_PRIME.resize();
+		let x = u256::from(x);
+		let p = ECDSA_PRIME;
 
 		// y² = x³ + 7 mod p
-		let y2 = (x.pow_mod(3.into(), p) + 7.into()) % p;
+		let y2 = x.pow_mod(3.into(), p).add_mod(7.into(), p);
 
 		// from an online source: "Secp256k1 is chosen in a special way so that the square root of y² is y²^((p+1)/4)"
-		let exp = (p + 1.into()) / 4.into();
+		// (p+1)/4 = 0x3fffffffffffffffffffffffffffffffffffffffffffffffffffffffbfffff0c
+		let exp = u256::from_raw_le([0xffffffffbfffff0c, 0xffffffffffffffff, 0xffffffffffffffff, 0x3fffffffffffffff]);
 		let mut y = y2.pow_mod(exp, p);
 		
 		if y_is_odd != y.is_odd() {
 			y = (p - y) % p;
 		}
 
-		Ok(ECDSAPubKey {
-			x: x.resize().to_signed(),
-			y: y.resize().to_signed(),
-		})
+		Ok(ECDSAPubKey { x, y })
 	}
 }
 
@@ -329,7 +326,7 @@ impl Deserialize for ECDSASig {
 }
 
 #[test]
-fn decompress_pub_keys() {
+fn test_decompress() {
 	// first item: compressed pub key (i.e. x coord preceded by 0x02 or 0x03)
 	// second item: y coord
 	let keys = [
@@ -340,41 +337,132 @@ fn decompress_pub_keys() {
 
 	for (compressed, expected_y) in keys {
 		let key = ECDSAPubKey::deserialize(&mut &*hex_to_bytes(compressed).unwrap()).unwrap();
-		assert!(i256::hex(expected_y) == key.y);
+		assert!(u256::hex(expected_y) == key.y);
 	}
 }
 
-#[test]
-fn tangents() {
-	let points = [
-		(ECDSAPoint::Coord { x: 5.into(), y: 11.into() }, u256::from(2), u256::from(17),   i256::from(12)), 
-		(ECDSAPoint::Coord { x: 1.into(), y:  3.into() }, u256::from(4), u256::from(2773), i256::from(2312)), 
-	];
+// #[test]
+// fn test_tangents() {
+// 	let points = [
+// 		(ECDSAPoint::Coord { x: 5.into(), y: 11.into() }, u256::from(2), u256::from(17),   u256::from(12)), 
+// 		(ECDSAPoint::Coord { x: 1.into(), y:  3.into() }, u256::from(4), u256::from(2773), u256::from(2312)), 
+// 	];
 
-	for (point, a, p, expected) in points {
-		assert!(expected == point.tangent(a, p));
-	}
-}
-
-#[test]
-fn double_points() {
-	let points = [
-		(ECDSAPoint::Coord { x: 5.into(), y: 11.into() }, u256::from(2), u256::from(17), ECDSAPoint::Coord { x: 15.into(), y: 5.into() }),
-	];
-
-	for (point, a, p, expected) in points {
-		assert!(point.double(a, p) == expected);
-	}
-}
+// 	for (point, a, p, expected) in points {
+// 		let tangent = point.tangent(a, p);
+// 		println!("tangent:  {}\nexpected: {}", tangent, expected);
+// 		assert!(expected == tangent);
+// 	}
+// }
 
 #[test]
-fn add_points() {
+fn test_double_points() {
 	let points = [
 		(
-			ECDSAPoint::Coord { x: 5.into(), y: 11.into() }, 
-			ECDSAPoint::Coord { x: 15.into(), y: 5.into() },
-			u256::from(2), u256::from(17),
-			ECDSAPoint::Coord { x: 13.into(), y: 4.into() },
+			ECDSA_BASE,
+			u256::from(ECDSA_A),
+			u256::from(ECDSA_PRIME),
+			ECDSAPoint::Coord {
+				x: u256::hex("C6047F9441ED7D6D3045406E95C07CD85C778E4B8CEF3CA7ABAC09B95C709EE5"),
+				y: u256::hex("1AE168FEA63DC339A3C58419466CEAEEF7F632653266D0E1236431A950CFE52A"),
+			},
+		),
+		(
+			ECDSAPoint::Coord {
+				x: u256::hex("C6047F9441ED7D6D3045406E95C07CD85C778E4B8CEF3CA7ABAC09B95C709EE5"),
+				y: u256::hex("1AE168FEA63DC339A3C58419466CEAEEF7F632653266D0E1236431A950CFE52A"),
+			},
+			u256::from(ECDSA_A),
+			u256::from(ECDSA_PRIME),
+			ECDSAPoint::Coord {
+				x: u256::hex("E493DBF1C10D80F3581E4904930B1404CC6C13900EE0758474FA94ABE8C4CD13"),
+				y: u256::hex("51ED993EA0D455B75642E2098EA51448D967AE33BFBDFE40CFE97BDC47739922"),
+			},
+		),
+		(
+			ECDSAPoint::Coord {
+				x: u256::hex("E493DBF1C10D80F3581E4904930B1404CC6C13900EE0758474FA94ABE8C4CD13"),
+				y: u256::hex("51ED993EA0D455B75642E2098EA51448D967AE33BFBDFE40CFE97BDC47739922"),
+			},
+			u256::from(ECDSA_A),
+			u256::from(ECDSA_PRIME),
+			ECDSAPoint::Coord {
+				x: u256::hex("2F01E5E15CCA351DAFF3843FB70F3C2F0A1BDD05E5AF888A67784EF3E10A2A01"),
+				y: u256::hex("5C4DA8A741539949293D082A132D13B4C2E213D6BA5B7617B5DA2CB76CBDE904"),
+			},
+		),
+		(
+			ECDSAPoint::Coord {
+				x: u256::hex("2F01E5E15CCA351DAFF3843FB70F3C2F0A1BDD05E5AF888A67784EF3E10A2A01"),
+				y: u256::hex("5C4DA8A741539949293D082A132D13B4C2E213D6BA5B7617B5DA2CB76CBDE904"),
+			},
+			u256::from(ECDSA_A),
+			u256::from(ECDSA_PRIME),
+			ECDSAPoint::Coord {
+				x: u256::hex("E60FCE93B59E9EC53011AABC21C23E97B2A31369B87A5AE9C44EE89E2A6DEC0A"),
+				y: u256::hex("F7E3507399E595929DB99F34F57937101296891E44D23F0BE1F32CCE69616821"),
+			},
+		),
+	];
+
+	for (point, a, p, expected) in points {
+		let point = point.double(a, p);
+		println!("{:X}", point.x().unwrap());
+		println!("{:X}", point.y().unwrap());
+		assert!(point == expected);
+	}
+}
+
+#[test]
+fn test_add_points() {
+	let points = [
+		(
+			ECDSAPoint::Coord {
+				x: u256::hex("5601570CB47F238D2B0286DB4A990FA0F3BA28D1A319F5E7CF55C2A2444DA7CC"),
+				y: u256::hex("C136C1DC0CBEB930E9E298043589351D81D8E0BC736AE2A1F5192E5E8B061D58"),
+			},
+			ECDSAPoint::Coord {
+				x: u256::hex("C6047F9441ED7D6D3045406E95C07CD85C778E4B8CEF3CA7ABAC09B95C709EE5"),
+				y: u256::hex("1AE168FEA63DC339A3C58419466CEAEEF7F632653266D0E1236431A950CFE52A"),
+			},
+			u256::from(ECDSA_A),
+			u256::from(ECDSA_PRIME),
+			ECDSAPoint::Coord {
+				x: u256::hex("4CE119C96E2FA357200B559B2F7DD5A5F02D5290AFF74B03F3E471B273211C97"),
+				y: u256::hex("12BA26DCB10EC1625DA61FA10A844C676162948271D96967450288EE9233DC3A"),
+			},
+		),
+		(
+			ECDSAPoint::Coord {
+				x: u256::hex("F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9"),
+				y: u256::hex("388F7B0F632DE8140FE337E62A37F3566500A99934C2231B6CB9FD7584B8E672"),
+			},
+			ECDSAPoint::Coord {
+				x: u256::hex("5CBDF0646E5DB4EAA398F365F2EA7A0E3D419B7E0330E39CE92BDDEDCAC4F9BC"),
+				y: u256::hex("6AEBCA40BA255960A3178D6D861A54DBA813D0B813FDE7B5A5082628087264DA"),
+			},
+			u256::from(ECDSA_A),
+			u256::from(ECDSA_PRIME),
+			ECDSAPoint::Coord {
+				x: u256::hex("A0434D9E47F3C86235477C7B1AE6AE5D3442D49B1943C2B752A68E2A47E247C7"),
+				y: u256::hex("893ABA425419BC27A3B6C7E693A24C696F794C2ED877A1593CBEE53B037368D7"),
+			},
+		),
+		(
+			ECDSAPoint::Coord {
+				x: u256::hex("5CBDF0646E5DB4EAA398F365F2EA7A0E3D419B7E0330E39CE92BDDEDCAC4F9BC"),
+				y: u256::hex("6AEBCA40BA255960A3178D6D861A54DBA813D0B813FDE7B5A5082628087264DA"),
+			},
+			ECDSAPoint::Coord {
+				x: u256::hex("2F01E5E15CCA351DAFF3843FB70F3C2F0A1BDD05E5AF888A67784EF3E10A2A01"),
+				y: u256::hex("5C4DA8A741539949293D082A132D13B4C2E213D6BA5B7617B5DA2CB76CBDE904"),
+			},
+			u256::from(ECDSA_A),
+			u256::from(ECDSA_PRIME),
+			ECDSAPoint::Coord {
+				x: u256::hex("D7924D4F7D43EA965A465AE3095FF41131E5946F3C85F79E44ADBCF8E27E080E"),
+				y: u256::hex("581E2872A86C72A683842EC228CC6DEFEA40AF2BD896D3A5C504DC9FF6A26B58"),
+			},
 		),
 	];
 
