@@ -1,7 +1,6 @@
 use std::fmt;
 use super::*;
 use crate::{
-	json::*,
 	network::Serialize,
 	common::write_u32,
 	crypto::sha256::compute_double_sha256,
@@ -530,7 +529,7 @@ impl <'a> Op<'a> {
 		}
 	}
 
-	pub(super) fn affect(&'a self, runtime: &mut ScriptRuntime) {
+	pub(super) fn affect(&'a self, runtime: &mut ScriptRuntime) -> Result<()> {
 		let result = match self {
 			Op::OP_0                => runtime.push_stack(StackObject::Empty),
 			Op::DATA(bytes)         => runtime.push_stack(StackObject::Bytes(bytes.to_vec())),
@@ -648,8 +647,11 @@ impl <'a> Op<'a> {
 			Op::INVALIDOPCODE(_)    => unimplemented!(),
 		};
 
-		if let Err(_) = result {
+		if let Err(err) = result {
 			runtime.invalid = true;
+			Err(err)
+		} else {
+			Ok(())
 		}
 	}
 }
@@ -780,11 +782,15 @@ fn check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
 	let sig     = runtime.pop_stack()?.to_ecdsa_sig()?;
 	
 	let mut tx_copy = runtime.tx.clone();
-	for input in tx_copy.inputs.iter_mut() {
+	for (i, input) in tx_copy.inputs.iter_mut().enumerate() {
+		if i == runtime.index {
+			// do not remove current input's unlocking script
+			continue;
+		}
 		input.unlock = Script::new();
 	}
 	
-	tx_copy.inputs[runtime.index].unlock = unimplemented!(); // need to create sub script
+	// tx_copy.inputs[runtime.index].unlock = unimplemented!(); // need to create sub script
 
 	if sig.hash_type() & 0x1f == 0x02 { // SIGHASH_NONE
 		unimplemented!();
@@ -803,8 +809,9 @@ fn check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
 	};
 
 	let hash = compute_double_sha256(&*serialized?);
-
-	unimplemented!(); // need to check sig
+	if pub_key.verify(sig, hash) == false {
+		return Err(Err::ScriptError("ECDSA signature did not verify".to_owned()))
+	}
 
 	Ok(())
 }

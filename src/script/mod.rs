@@ -193,13 +193,14 @@ impl <'a> ScriptRuntime<'a> {
 		}
 	}
 
-	pub fn execute(&mut self, script: &Script) {
+	pub fn execute(&mut self, script: &Script) -> Result<()> {
 		if self.invalid {
-			return;
+			return Err(Err::ScriptError("attempt to execute script previous state was already invalid".to_owned()));
 		}
 		for op in script.ops() {
-			op.affect(self);
+			op.affect(self)?;
 		}
+		Ok(())
 	}
 
 	pub fn is_valid(&self) -> bool {

@@ -522,7 +522,7 @@ fn main() -> Result<()> {
 	
 	let block = BlocksDB::new().load_block(Sha256::try_from("00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee")?)?;
 	let mut runtime = ScriptRuntime::new(&block.txs[1], 1);
-	runtime.execute(&script);
+	runtime.execute(&script)?;
 
 	Ok(())
 }

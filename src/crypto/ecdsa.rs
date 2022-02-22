@@ -151,6 +151,7 @@ impl ToJson for ECDSAPoint {
 	}
 }
 
+#[derive(Debug)]
 pub struct ECDSAPubKey {
 	x: u256,
 	y: u256,
@@ -161,6 +162,7 @@ impl ECDSAPubKey {
 		ECDSAPoint::Coord { x: self.x, y: self.y }
 	}
 
+	#[must_use]
 	pub fn verify(&self, sig: ECDSASig, hash: Sha256) -> bool {
 		// adapted from https://github.com/tlsfuzzer/python-ecdsa/blob/master/src/ecdsa/ecdsa.py (public domain)
 		let hash = hash.to_u256();
@@ -174,12 +176,12 @@ impl ECDSAPubKey {
 			return false;
 		}
 		let c = s.mod_inv(n);
-		let u1 = (hash * c) % n;
-		let u2 = (r * c) % n;
+		let u1 = hash.mul_mod(c, n);
+		let u2 = r.mul_mod(c, n);
 		let point = u1 * g + u2 * self.to_point();
 		if let ECDSAPoint::Coord { x, .. } = point {
 			let v = x % ECDSA_ORDER;
-			v == r.resize()
+			v == r
 		} else {
 			false
 		}
@@ -261,6 +263,7 @@ impl Deserialize for ECDSAPubKey {
 // 	}
 // }
 
+#[derive(Debug)]
 pub struct ECDSASig {
 	r: u256,
 	s: u256,
@@ -500,5 +503,27 @@ fn test_mul_point_scalar() {
 
 	for (p, s, expected) in points {
 		assert!(s * p == expected);
+	}
+}
+
+#[test]
+fn test_verify() {
+	let sigs = [
+		(
+			ECDSAPubKey {
+				x: u256::dec("8077278579061990400249759952135267692351268034085864289451880299432711854684"),
+				y: u256::dec("80909081783613153892905690721223288132374970267791400411164949654933991592611"),
+			},
+			ECDSASig {
+				r: u256::dec("29763811306752682825656922964074679856867562167831755660799482687659085743438"),
+				s: u256::dec("4123030547342669934053630013362611582222837609180400898674750749315497596184"),
+				hash_type: 1
+			},
+			Sha256::try_from("a1629e004eb3d703ecf3807f976e402a626d84c559f8eab1450adf207619f319").unwrap(),
+		),
+	];
+
+	for (pubkey, sig, hash) in sigs {
+		assert!(pubkey.verify(sig, hash));
 	}
 }
