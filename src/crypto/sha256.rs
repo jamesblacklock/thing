@@ -30,7 +30,8 @@ impl Sha256 {
 	}
 
 	pub fn to_u256(&self) -> super::big_int::u256 {
-		super::big_int::u256::from_raw_le(unsafe { std::mem::transmute(self.digest) })
+		let b: [u8;32] = (&*self.as_bytes().iter().copied().rev().collect::<Vec<_>>()).try_into().unwrap();
+		super::big_int::u256::from_raw_le(unsafe { std::mem::transmute(b) })
 	}
 }
 

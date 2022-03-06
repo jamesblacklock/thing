@@ -809,7 +809,7 @@ fn check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
 	};
 
 	let hash = compute_double_sha256(&*serialized?);
-	if pub_key.verify(sig, hash) == false {
+	if pub_key.verify(&sig, &hash) == false {
 		return Err(Err::ScriptError("ECDSA signature did not verify".to_owned()))
 	}
 

@@ -158,12 +158,16 @@ pub struct ECDSAPubKey {
 }
 
 impl ECDSAPubKey {
+	pub fn from_coords(x: u256, y: u256) -> Self {
+		ECDSAPubKey { x, y }
+	}
+	
 	fn to_point(&self) -> ECDSAPoint {
 		ECDSAPoint::Coord { x: self.x, y: self.y }
 	}
 
 	#[must_use]
-	pub fn verify(&self, sig: ECDSASig, hash: Sha256) -> bool {
+	pub fn verify(&self, sig: &ECDSASig, hash: &Sha256) -> bool {
 		// adapted from https://github.com/tlsfuzzer/python-ecdsa/blob/master/src/ecdsa/ecdsa.py (public domain)
 		let hash = hash.to_u256();
 		let g = ECDSA_BASE;
@@ -185,6 +189,13 @@ impl ECDSAPubKey {
 		} else {
 			false
 		}
+	}
+}
+
+impl std::convert::TryFrom<&str> for ECDSAPubKey {
+	type Error = Err;
+	fn try_from(s: &str) -> Result<ECDSAPubKey> {
+		ECDSAPubKey::deserialize(&mut &*hex_to_bytes(s)?)
 	}
 }
 
@@ -274,6 +285,17 @@ impl ECDSASig {
 	pub fn hash_type(&self) -> u8 {//HashType {
 		self.hash_type
 	}
+
+	pub fn new(r: u256, s: u256) -> ECDSASig {
+		ECDSASig { r, s, hash_type: 1 }
+	}
+}
+
+impl std::convert::TryFrom<&str> for ECDSASig {
+	type Error = Err;
+	fn try_from(s: &str) -> Result<ECDSASig> {
+		ECDSASig::deserialize(&mut &*hex_to_bytes(s)?)
+	}
 }
 
 impl ToJson for ECDSASig {
@@ -300,6 +322,8 @@ fn read_der_32_byte_int(stream: &mut dyn Read) -> Result<(u8, [u8; 32])> {
 	}
 	let mut value = [0; 32];
 	read_buf_exact(stream, &mut value)?;
+	let temp = value.iter().copied().rev().collect::<Vec<_>>();
+	value.copy_from_slice(&temp);
 	if size == 33 && value[0] < 0x80 {
 		return Err(Err::ValueError("invalid signature".to_owned()));
 	}
@@ -510,20 +534,30 @@ fn test_mul_point_scalar() {
 fn test_verify() {
 	let sigs = [
 		(
+			// ECDSAPubKey {
+			// 	x: u256::dec("8077278579061990400249759952135267692351268034085864289451880299432711854684"),
+			// 	y: u256::dec("80909081783613153892905690721223288132374970267791400411164949654933991592611"),
+			// },
+			// ECDSASig {
+			// 	r: u256::dec("29763811306752682825656922964074679856867562167831755660799482687659085743438"),
+			// 	s: u256::dec("4123030547342669934053630013362611582222837609180400898674750749315497596184"),
+			// 	hash_type: 1
+			// },
+			// Sha256::try_from("a1629e004eb3d703ecf3807f976e402a626d84c559f8eab1450adf207619f319").unwrap(),
 			ECDSAPubKey {
-				x: u256::dec("8077278579061990400249759952135267692351268034085864289451880299432711854684"),
-				y: u256::dec("80909081783613153892905690721223288132374970267791400411164949654933991592611"),
+				x: u256::dec("11417592243162659787639117474526594937691461953455800971979147078584873533825"),
+				y: u256::dec("3417463964140656140894012168784011180671405399515445152471501642349140939185"),
 			},
 			ECDSASig {
-				r: u256::dec("29763811306752682825656922964074679856867562167831755660799482687659085743438"),
-				s: u256::dec("4123030547342669934053630013362611582222837609180400898674750749315497596184"),
+				r: u256::dec("94785161033224446731240870469048275665961873467030210618040226616800059291665"),
+				s: u256::dec("87967106749861467156284038218437790708843387091517171079593211170958407329199"),
 				hash_type: 1
 			},
-			Sha256::try_from("a1629e004eb3d703ecf3807f976e402a626d84c559f8eab1450adf207619f319").unwrap(),
+			super::sha256::compute_sha256("message".as_bytes()),
 		),
 	];
 
 	for (pubkey, sig, hash) in sigs {
-		assert!(pubkey.verify(sig, hash));
+		assert!(pubkey.verify(&sig, &hash));
 	}
 }
