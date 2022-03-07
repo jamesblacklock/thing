@@ -109,6 +109,8 @@ pub struct Block {
 	pub txs: Vec<Tx>,
 }
 
+pub const GENESIS_BLOCK_HASH: &str = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
+
 impl Block {
 	pub fn genesis() -> Self {
 		let mut input = TxInput::default();
@@ -142,7 +144,7 @@ impl Block {
 		};
 
 		let genesis_merkle_root = Sha256::try_from("4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b").unwrap();
-		let genesis_block_hash = Sha256::try_from("000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f").unwrap();
+		let genesis_block_hash = Sha256::try_from(GENESIS_BLOCK_HASH).unwrap();
 		let block_hash = block.header.compute_hash();
 
 		assert!(merkle_root == genesis_merkle_root, "{} != {}", merkle_root, genesis_merkle_root);

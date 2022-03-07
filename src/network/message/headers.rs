@@ -24,7 +24,7 @@ use super::{
 	Serialize,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Header {
 	pub version: i32,
 	pub prev_block: Sha256,

@@ -7,6 +7,8 @@ use std::{
 	sync::mpsc::{Receiver},
 	thread,
 	io::Write,
+	io::BufReader,
+	io::BufRead,
 };
 
 #[macro_use]
@@ -40,6 +42,7 @@ use network::{
 		Header,
 		Headers,
 		ValidationResult,
+		GENESIS_BLOCK_HASH,
 	}
 };
 
@@ -54,6 +57,7 @@ struct Config {
 	feerate: u64,
 }
 
+#[derive(Debug)]
 struct BlocksDB {
 	blocks_requested: usize,
 	blocks_validated: usize,
@@ -73,6 +77,87 @@ impl BlocksDB {
 		}
 	}
 
+	fn load() -> Self {
+		use std::path::Path;
+		const HEADERS_PATH: &str = "./data/block_db/headers.dat";
+		const IDS_PATH: &str = "./data/block_db/ids.txt";
+		let mut db = BlocksDB::new();
+
+		if Path::new(HEADERS_PATH).is_file() && Path::new(IDS_PATH).is_file() {
+			let mut headers_file = match std::fs::File::open(HEADERS_PATH) {
+				Ok(file) => file,
+				Err(err) => {
+					eprintln!("warning: failed to load headers.dat: {}", err.to_string());
+					return db;
+				}
+			};
+			let ids_file = match std::fs::File::open(IDS_PATH) {
+				Ok(file) => file,
+				Err(err) => {
+					eprintln!("warning: failed to load ids.txt: {}", err.to_string());
+					return db;
+				}
+			};
+
+			let mut hashes = db.hashes.clone();
+			let mut headers = db.headers.clone();
+			for hash in BufReader::new(ids_file).lines() {
+				let hash = match hash {
+					Ok(hash) => hash,
+					Err(err) => {
+						eprintln!("warning: failed to read from ids.txt: {}", err.to_string());
+						return db;
+					}
+				};
+				let hash = match Sha256::try_from(hash.as_str()) {
+					Ok(hash) => hash,
+					Err(_) => {
+						eprintln!("warning: ids.txt contains invalid hash: {}", hash);
+						return db;
+					}
+				};
+				let header = match Header::deserialize(&mut headers_file) {
+					Ok(header) => header,
+					Err(_) => {
+						eprintln!("warning: headers.dat is corrupt");
+						return db;
+					}
+				};
+				hashes.push(hash);
+				headers.insert(hash, header);
+			}
+
+			db.blocks_requested = hashes.len();
+			db.blocks_validated = hashes.len();
+			db.hashes = hashes;
+			db.headers = headers;
+		}
+
+		db
+	}
+
+	fn save(&self) {
+		if let Err(err) = std::fs::create_dir_all("./data/block_db") {
+			eprintln!("warning: failed to save block_db state: {}", err.to_string());
+			return;
+		}
+		let mut file = match std::fs::File::create("./data/block_db/headers.dat") {
+			Ok(file) => file,
+			Err(err) => {
+				eprintln!("warning: failed to save block_db state: {}", err.to_string());
+				return;
+			}
+		};
+		for hash in self.hashes.iter() {
+			let header = self.headers.get(hash)
+				.expect("warning: hashes Vec contains a hash that is missing from headers HashMap (this should never happen)");
+			if let Err(err) = header.serialize(&mut file) {
+				eprintln!("warning: failed to save block_db state: {}", err.to_string());
+				return;
+			}
+		}
+	}
+
 	fn store_block(&self, block: Block) -> Result<()> {
 		let hash = block.header.compute_hash();
 		if self.has_block(hash) {
@@ -80,12 +165,12 @@ impl BlocksDB {
 		}
 		std::fs::create_dir_all("./data/block_db")
 			.map_err(|err| Err::IOError(err.to_string()))?;
-		let mut file = std::fs::File::create(format!("./data/block_db/{}.block", hash))
+		let mut file = std::fs::File::create(format!("./data/block_db/{}.dat", hash))
 			.map_err(|err| Err::IOError(err.to_string()))?;
 		let mut ids = std::fs::OpenOptions::new()
 			.create(true)
 			.append(true)
-            .open(format!("./data/block_db/ids.txt"))
+            .open("./data/block_db/ids.txt")
 			.map_err(|err| Err::IOError(err.to_string()))?;
 		
 		block.serialize(&mut file)?;
@@ -95,13 +180,16 @@ impl BlocksDB {
 	}
 
 	fn load_block(&self, hash: Sha256) -> Result<Block> {
-		let mut file = std::fs::File::open(format!("./data/block_db/{}.block", hash))
+		if hash == GENESIS_BLOCK_HASH.try_into().unwrap() {
+			return Ok(Block::genesis())
+		}
+		let mut file = std::fs::File::open(format!("./data/block_db/{}.dat", hash))
 			.map_err(|err| Err::IOError(err.to_string()))?;
 		Block::deserialize(&mut file)
 	}
 
 	fn has_block(&self, hash: Sha256) -> bool {
-		std::path::Path::new(&format!("./data/block_db/{}.block", hash)).exists()
+		std::path::Path::new(&format!("./data/block_db/{}.block", hash)).is_file()
 	}
 }
 
@@ -203,13 +291,86 @@ impl Node {
 
 		log_debug!("{} peers conntected.", peers.len());
 		
-		Ok(Node {
+		let node = Node {
 			peers,
 			recv,
 			mempool: Mempool::new(),
-			block_db: BlocksDB::new(),
-			utxos: HashMap::new(),
-		})
+			block_db: BlocksDB::load(),
+			utxos: Node::load_utxos(),
+		};
+
+		Ok(node)
+	}
+
+	fn load_utxos() -> HashMap<UTXOID, TxOutput> {
+		use std::path::Path;
+
+		const UTXOS_PATH: &str = "./data/utxos.dat";
+		
+		if Path::new(UTXOS_PATH).is_file() {
+			let mut utxos_file = match std::fs::File::open(UTXOS_PATH) {
+				Ok(file) => file,
+				Err(err) => {
+					eprintln!("warning: failed to load utxos.dat: {}", err.to_string());
+					return HashMap::new();
+				}
+			};
+
+			let result: Result<_> = try {
+				let count = common::read_u64(&mut utxos_file)?;
+				let mut utxos = HashMap::new();
+				for _ in 0..count {
+					let hash = common::read_sha256(&mut utxos_file)?;
+					let index = common::read_u32(&mut utxos_file)?;
+					let utxo = TxOutput::deserialize(&mut utxos_file)?;
+					utxos.insert(UTXOID(hash, index), utxo);
+				}
+				utxos
+			};
+
+			match result {
+				Ok(utxos) => {
+					return utxos
+				},
+				Err(err) => {
+					eprintln!("warning: failed to save utxo set: {}", err.to_string());
+					return HashMap::new();
+				},
+			}
+		}
+
+		return HashMap::new();
+	}
+
+	fn save_utxos(&self) {
+		if self.utxos.len() == 0 {
+			return;
+		}
+
+		let mut file = match std::fs::File::create("./data/utxos.dat") {
+			Ok(file) => file,
+			Err(err) => {
+				eprintln!("warning: failed to save utxo set: {}", err.to_string());
+				return;
+			}
+		};
+		let result: Result<()> = try {
+			common::write_u64(&mut file, self.utxos.len() as u64)?;
+			for (k, v) in self.utxos.iter() {
+				common::write_sha256(&mut file, &k.0)?;
+				common::write_u32(&mut file, k.1)?;
+				v.serialize(&mut file)?;
+			}
+		};
+
+		if let Err(err) = result {
+			eprintln!("warning: failed to save utxo set: {}", err.to_string());
+		}
+	}
+
+	fn shutdown(self) {
+		self.block_db.save();
+		self.save_utxos();
 	}
 
 	fn handle_message(&mut self, peer_index: usize, m: Message) -> Result<()> {
@@ -421,6 +582,7 @@ impl Node {
 					match m {
 						ApplicationMessage::Shutdown => {		
 							println!("<shutting down>");
+							self.shutdown();
 							send_cmd_done.send(()).unwrap();
 							break;
 						},
