@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8.4"
+ctrlc = "3.2.1"
 
 [profile.dev]
 opt-level = 1

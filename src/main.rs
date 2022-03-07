@@ -626,6 +626,9 @@ impl Node {
 
 		let stdin = std::io::stdin();
 		let mut stdout = std::io::stdout();
+
+		let send_cmd_ctrlc = send_cmd.clone();
+		ctrlc::set_handler(move || send_cmd_ctrlc.send(ApplicationMessage::Shutdown).unwrap()).unwrap();
 		
 		loop {
 			let mut buf = String::new();
