@@ -185,15 +185,17 @@ impl fmt::Debug for StackObject {
 pub struct ScriptRuntime<'a> {
 	tx: &'a Tx,
 	index: usize,
+	lock: &'a Script,
 	stack: Vec<StackObject>,
 	invalid: bool,
 }
 
 impl <'a> ScriptRuntime<'a> {
-	pub fn new(tx: &'a Tx, index: usize) -> Self {
+	pub fn new(tx: &'a Tx, index: usize, lock: &'a Script) -> Self {
 		ScriptRuntime {
 			tx,
 			index,
+			lock,
 			stack: Vec::new(),
 			invalid: false,
 		}

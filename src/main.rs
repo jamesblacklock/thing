@@ -66,8 +66,8 @@ impl BlocksDB {
 		let genesis = Block::genesis().header;
 		let genesis_hash = genesis.compute_hash();
 		BlocksDB {
-			blocks_requested: 0,
-			blocks_validated: 0,
+			blocks_requested: 1,
+			blocks_validated: 1,
 			hashes: vec![genesis_hash],
 			headers: HashMap::from([(genesis_hash, genesis)]),
 		}
@@ -82,7 +82,15 @@ impl BlocksDB {
 			.map_err(|err| Err::IOError(err.to_string()))?;
 		let mut file = std::fs::File::create(format!("./data/block_db/{}.block", hash))
 			.map_err(|err| Err::IOError(err.to_string()))?;
+		let mut ids = std::fs::OpenOptions::new()
+			.create(true)
+			.append(true)
+            .open(format!("./data/block_db/ids.txt"))
+			.map_err(|err| Err::IOError(err.to_string()))?;
+		
 		block.serialize(&mut file)?;
+		writeln!(ids, "{}", hash).map_err(|err| Err::IOError(err.to_string()))?;
+
 		Ok(())
 	}
 
@@ -403,18 +411,18 @@ impl Node {
 		let (send_cmd, recv_cmd) = mpsc::channel();
 		let (send_cmd_done, recv_cmd_done) = mpsc::channel();
 		let t = thread::spawn(move || {
-			'outer: loop {
-				while let Ok((i, m)) = self.recv.try_recv() {
+			loop {
+				if let Ok((i, m)) = self.recv.try_recv() {
 					if let Err(e) = self.handle_message(i, m) {
 						log_error!("{}", e);
 					}
 				}
-				while let Ok(m) = recv_cmd.try_recv() {
+				if let Ok(m) = recv_cmd.try_recv() {
 					match m {
 						ApplicationMessage::Shutdown => {		
 							println!("<shutting down>");
 							send_cmd_done.send(()).unwrap();
-							break 'outer;
+							break;
 						},
 						ApplicationMessage::ShowMempool => {
 							if self.mempool.txs.len() == 0 {
@@ -425,10 +433,7 @@ impl Node {
 							}
 						},
 						ApplicationMessage::ShowBlockHashes => {
-							if self.block_db.hashes.len() == 0 {
-								println!("<empty>");
-							}
-							for (i, hash) in self.block_db.hashes.iter().take(self.block_db.blocks_requested).enumerate() {
+							for (i, hash) in self.block_db.hashes.iter().take(self.block_db.blocks_validated).enumerate() {
 								println!("{:010}: {}", i, hash);
 							}
 						},
@@ -509,20 +514,7 @@ impl Node {
 }
 
 fn main() -> Result<()> {
-	// let addrs = std::env::args().skip(1).collect();
-	// let node = Node::new(addrs)?;
-	// node.run()
-
-	use script::*;
-	let script = Script::builder()
-		.append(Op::data_hex("304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901"))
-		.append(Op::data_hex("0411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3"))
-		.append(Op::CHECKSIG)
-		.build();
-	
-	let block = BlocksDB::new().load_block(Sha256::try_from("00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee")?)?;
-	let mut runtime = ScriptRuntime::new(&block.txs[1], 1);
-	runtime.execute(&script)?;
-
-	Ok(())
+	let addrs = std::env::args().skip(1).collect();
+	let node = Node::new(addrs)?;
+	node.run()
 }

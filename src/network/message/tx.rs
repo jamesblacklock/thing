@@ -310,7 +310,7 @@ impl Tx {
 		}
 
 		let mut available = 0;
-		for input in self.inputs.iter() {
+		for(i, input) in self.inputs.iter().enumerate() {
 			let id = input.utxo_id();
 			if !utxos.contains(&id) {
 				return false;
@@ -318,18 +318,12 @@ impl Tx {
 			let utxo = utxos.remove(id);
 			available += utxo.value;
 			
-			// {
-			// 	let mut runtime = ScriptRuntime::new(&self);
-			// 	// println!("{} {}", &input.unlock, &utxo.lock);
-
-			// 	runtime.execute(&input.unlock);
-			// 	// println!("{:?}", runtime);
-			// 	runtime.execute(&utxo.lock);
-			// 	// println!("{:?}", runtime);
-			// 	if !runtime.is_valid() {
-			// 		return false;
-			// 	}
-			// }
+			let mut runtime = ScriptRuntime::new(&self, i, &utxo.lock);
+			let result = runtime.execute(&input.unlock)
+				.and_then(|_| runtime.execute(&utxo.lock));
+			if let Err(_) = result {
+				return false;
+			}
 		}
 
 		for (i, output) in self.outputs.iter().cloned().enumerate() {

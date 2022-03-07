@@ -98,28 +98,23 @@ impl <const W: usize> BigInt<W> {
 	}
 
 	pub fn pow(self, other: Self) -> Self {
-		let (mut a, mut b) = (self, other);
+		let mut a = self;
 		let mut res = Self::from(1);
-		while b > 0.into() {
-			if b % 2.into() != 0.into() {
-				res = res * a;
-			}
+		for b in 0..(W*64) {
+			if other.bit(b) { res = res * a; }
 			a = a * a;
-			b = b >> 1;
 		}
 		return res;
 	}
 	
 	pub fn pow_mod(self, other: Self, modulo: Self) -> Self {
-		let (mut a, mut b, m) = (self, other, modulo);
+		let (mut a, m) = (self, modulo);
 		a = a % m;
 		let mut res = Self::from(1);
-		while b > 0.into() {
-			if b % 2.into() != 0.into() {
-				res = res.mul_mod(a, m);
-			}
+
+		for b in 0..(W*64) {
+			if other.bit(b) { res = res.mul_mod(a, m); }
 			a = a.mul_mod(a, m);
-			b = b >> 1;
 		}
 		return res;
 	}
@@ -166,12 +161,10 @@ impl <const W: usize> BigInt<W> {
 				for b in n64.to_be_bytes() {
 					if print_leading_zeros || !(leading_zeros && b & 0xf0 == 0) {
 						leading_zeros = leading_zeros && b & 0xf0 == 0;
-						// println!("{}", digits[(b >> 4) as usize]);
 						chars.push(digits[(b >> 4) as usize]);
 					}
 					if print_leading_zeros || !(leading_zeros && b & 0x0f == 0) {
 						leading_zeros = leading_zeros && b & 0x0f == 0;
-						// println!("{}", digits[(b & 0xf) as usize]);
 						chars.push(digits[(b & 0xf) as usize]);
 					}
 			}

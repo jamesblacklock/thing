@@ -56,7 +56,7 @@ impl ECDSAPoint {
 
 	fn double(&self, a: u256, p: u256) -> ECDSAPoint {
 		match self {
-			ECDSAPoint::Infinity       => self.clone(),
+			ECDSAPoint::Infinity        => self.clone(),
 			&ECDSAPoint::Coord { x, y } => {
 				let tangent = self.tangent(a, p);
 				let new_x = tangent.mul_mod(tangent, p).sub_mod(x, p).sub_mod(x, p);
@@ -76,6 +76,8 @@ impl ECDSAPoint {
 			(&ECDSAPoint::Coord { x: px, y: py }, &ECDSAPoint::Coord { x: qx, y: qy }) => {
 				if (px, py) == (qx, qy) {
 					self.double(a, p)
+				} else if px == qx && py + qy == 0.into() {
+					ECDSAPoint::Infinity
 				} else {
 					let prime = p;
 					let slope = py.sub_mod(qy, prime).mul_mod(px.sub_mod(qx, prime).mod_inv(prime), prime);
@@ -92,43 +94,25 @@ impl ECDSAPoint {
 
 	fn mul(&self, scalar: u256, a: u256, p: u256) -> ECDSAPoint {
 		match self {
-			&ECDSAPoint::Infinity => unimplemented!(),
+			&ECDSAPoint::Infinity => ECDSAPoint::Infinity,
 			&ECDSAPoint::Coord {..} => {
-				if scalar == 0.into() {
-					unimplemented!();
-				}
-				let mut powers = vec![(self.clone(), u256::from(1))];
-				let mut acc = self.clone();
-				let mut count = u256::from(1);
-				let mut next_count = count + count;
-				while next_count > count && next_count < scalar {
-					count = next_count;
-					acc = acc.double(a, p);
-					powers.push((acc.clone(), count));
-					next_count = count + count;
-				}
-				let (mut n, mut power) = powers.pop().unwrap();
-				while count < scalar {
-					next_count = count + power;
-					if next_count > count && next_count <= scalar {
-						acc = acc.add(&n, a, p);
-						count = next_count;
-					} else if powers.len() == 0 {
-						break;
-					} else {
-						(n, power) = powers.pop().unwrap();
+				let mut q = ECDSAPoint::Infinity;
+				for i in (0..256).rev() {
+					q = q.double(a, p);
+					if scalar.bit(i) {
+						q = q.add(self, a, p);
 					}
 				}
-				acc
-			},
+				q
+			}
 		}
 	}
 }
 
-impl std::ops::Mul<ECDSAPoint> for u256 {
+impl std::ops::Mul<u256> for ECDSAPoint {
 	type Output = ECDSAPoint;
-	fn mul(self, point: ECDSAPoint) -> ECDSAPoint {
-		ECDSAPoint::mul(&point, self, ECDSA_A, ECDSA_PRIME)
+	fn mul(self, n: u256) -> ECDSAPoint {
+		ECDSAPoint::mul(&self, n, ECDSA_A, ECDSA_PRIME)
 	}
 }
 
@@ -182,7 +166,7 @@ impl ECDSAPubKey {
 		let c = s.mod_inv(n);
 		let u1 = hash.mul_mod(c, n);
 		let u2 = r.mul_mod(c, n);
-		let point = u1 * g + u2 * self.to_point();
+		let point = g * u1 + self.to_point() * u2;
 		if let ECDSAPoint::Coord { x, .. } = point {
 			let v = x % ECDSA_ORDER;
 			v == r
@@ -281,12 +265,13 @@ impl ToJson for ECDSASig {
 	}
 }
 
-fn read_der_32_byte_int(stream: &mut dyn Read) -> Result<(u8, [u8; 32])> {
+fn read_der_32_byte_int(stream: &mut dyn Read) -> Result<(bool, [u8; 32])> {
 	// "int" indicator
 	if read_u8(stream)? != 0x02 {
 		return Err(Err::ValueError("invalid signature".to_owned()));
 	}
 	let size = read_u8(stream)?;
+	// TODO: valid signatures can be shorter than 32 bytes
 	if size < 32 || size > 33 {
 		return Err(Err::ValueError("invalid signature".to_owned()));
 	} else if size == 33 && read_u8(stream)? != 0 {
@@ -296,10 +281,7 @@ fn read_der_32_byte_int(stream: &mut dyn Read) -> Result<(u8, [u8; 32])> {
 	read_buf_exact(stream, &mut value)?;
 	let temp = value.iter().copied().rev().collect::<Vec<_>>();
 	value.copy_from_slice(&temp);
-	if size == 33 && value[0] < 0x80 {
-		return Err(Err::ValueError("invalid signature".to_owned()));
-	}
-	Ok(((size == 33) as u8, value))
+	Ok((size == 33, value))
 }
 
 impl Deserialize for ECDSASig {
@@ -314,8 +296,11 @@ impl Deserialize for ECDSASig {
 		}
 		let (r_extra_byte, r) = read_der_32_byte_int(stream)?;
 		let (s_extra_byte, s) = read_der_32_byte_int(stream)?;
-		if total_size != 68 + r_extra_byte + s_extra_byte {
+		if total_size != 68 + r_extra_byte as u8 + s_extra_byte as u8 {
 			return Err(Err::ValueError("invalid signature".to_owned()));
+		} else if r_extra_byte && r[0] < 0x80 || s_extra_byte && s[0] < 0x80 {
+			eprintln!("warning: non-standard signature encoding");
+			// return Err(Err::ValueError("invalid signature".to_owned()));
 		}
 
 		Ok(ECDSASig{s: s.into(), r: r.into()})
@@ -496,7 +481,7 @@ fn test_mul_point_scalar() {
 	];
 
 	for (p, s, expected) in points {
-		assert!(s * p == expected);
+		assert!(p * s == expected);
 	}
 }
 

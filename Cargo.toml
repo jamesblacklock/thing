@@ -6,6 +6,10 @@ edition = "2021"
 [dependencies]
 rand = "0.8.4"
 
+[profile.dev]
+opt-level = 1
+overflow-checks = false
+
 [[bin]]
 name = "frabjous-bitcoin"
 path = "src/main.rs"

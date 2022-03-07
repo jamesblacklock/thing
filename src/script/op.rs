@@ -781,16 +781,17 @@ fn check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
 	let pub_key = runtime.pop_stack()?.to_ecdsa_pubkey()?;
 	let (sig, hash_type)     = runtime.pop_stack()?.to_ecdsa_sig()?;
 	
+	// TODO: deal with all that OP_CODESEPARATOR bullshit and stuff (cf. https://en.bitcoin.it/wiki/OP_CHECKSIG)
+	let subscript = runtime.lock;
+
 	let mut tx_copy = runtime.tx.clone();
 	for (i, input) in tx_copy.inputs.iter_mut().enumerate() {
 		if i == runtime.index {
-			// do not remove current input's unlocking script
-			continue;
+			input.unlock = subscript.clone();
+		} else {
+			input.unlock = Script::new();
 		}
-		input.unlock = Script::new();
 	}
-	
-	// tx_copy.inputs[runtime.index].unlock = unimplemented!(); // need to create sub script
 
 	if hash_type & 0x1f == 0x02 { // SIGHASH_NONE
 		unimplemented!();
