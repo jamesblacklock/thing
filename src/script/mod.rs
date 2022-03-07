@@ -9,6 +9,7 @@ use crate::{
 	network::Deserialize,
 	network::message::Tx,
 	err::*,
+	common::read_u8,
 };
 
 mod op;
@@ -158,9 +159,14 @@ impl StackObject {
 		}
 	}
 
-	pub fn to_ecdsa_sig(&self) -> Result<ECDSASig> {
+	pub fn to_ecdsa_sig(&self) -> Result<(ECDSASig, u8)> {
 		match self {
-			StackObject::Bytes(bytes) => ECDSASig::deserialize(&mut bytes.as_slice()),
+			StackObject::Bytes(bytes) => {
+				let stream = &mut bytes.as_slice();
+				let sig = ECDSASig::deserialize(stream)?;
+				let hash_type = read_u8(stream)?;
+				Ok((sig, hash_type))
+			},
 			_ => Err(Err::ScriptError("could not convert stack object to ECDSA sig".to_owned()))
 		}
 	}

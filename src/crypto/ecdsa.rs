@@ -253,41 +253,15 @@ impl Deserialize for ECDSAPubKey {
 	}
 }
 
-// #[derive(Debug)]
-// pub enum HashType {
-// 	SigHashAll = 0x01,
-// 	SigHashNone = 0x02,
-// 	SigHashSingle = 0x03,
-// 	SigHashAnyoneCanPay = 0x80,
-// }
-
-// impl TryFrom<u8> for HashType {
-// 	type Error = Err;
-// 	fn try_from(n: u8) -> Result<Self> {
-// 		match n {
-// 			0x01 => Ok(HashType::SigHashAll),
-// 			0x02 => Ok(HashType::SigHashNone),
-// 			0x03 => Ok(HashType::SigHashSingle),
-// 			0x80 => Ok(HashType::SigHashAnyoneCanPay),
-// 			_ => Err(Err::ValueError("invalid hash type".to_owned()))
-// 		}
-// 	}
-// }
-
 #[derive(Debug)]
 pub struct ECDSASig {
 	r: u256,
 	s: u256,
-	hash_type: u8,//HashType,
 }
 
 impl ECDSASig {
-	pub fn hash_type(&self) -> u8 {//HashType {
-		self.hash_type
-	}
-
 	pub fn new(r: u256, s: u256) -> ECDSASig {
-		ECDSASig { r, s, hash_type: 1 }
+		ECDSASig { r, s }
 	}
 }
 
@@ -303,8 +277,6 @@ impl ToJson for ECDSASig {
 		JsonValue::object([
 			("s", JsonValue::string(format!("{}", self.s))),
 			("r", JsonValue::string(format!("{}", self.r))),
-			// ("hash_type", JsonValue::string(format!("{:?}", self.hash_type))),
-			("hash_type", JsonValue::number(self.hash_type)),
 		])
 	}
 }
@@ -346,9 +318,7 @@ impl Deserialize for ECDSASig {
 			return Err(Err::ValueError("invalid signature".to_owned()));
 		}
 
-		let hash_type = read_u8(stream)?;//.try_into()?;
-
-		Ok(ECDSASig{s: s.into(), r: r.into(), hash_type})
+		Ok(ECDSASig{s: s.into(), r: r.into()})
 	}
 }
 
@@ -541,7 +511,6 @@ fn test_verify() {
 			// ECDSASig {
 			// 	r: u256::dec("29763811306752682825656922964074679856867562167831755660799482687659085743438"),
 			// 	s: u256::dec("4123030547342669934053630013362611582222837609180400898674750749315497596184"),
-			// 	hash_type: 1
 			// },
 			// Sha256::try_from("a1629e004eb3d703ecf3807f976e402a626d84c559f8eab1450adf207619f319").unwrap(),
 			ECDSAPubKey {
@@ -551,7 +520,6 @@ fn test_verify() {
 			ECDSASig {
 				r: u256::dec("94785161033224446731240870469048275665961873467030210618040226616800059291665"),
 				s: u256::dec("87967106749861467156284038218437790708843387091517171079593211170958407329199"),
-				hash_type: 1
 			},
 			super::sha256::compute_sha256("message".as_bytes()),
 		),

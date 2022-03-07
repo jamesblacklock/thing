@@ -779,7 +779,7 @@ impl <'a> fmt::Display for Op<'a> {
 
 fn check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
 	let pub_key = runtime.pop_stack()?.to_ecdsa_pubkey()?;
-	let sig     = runtime.pop_stack()?.to_ecdsa_sig()?;
+	let (sig, hash_type)     = runtime.pop_stack()?.to_ecdsa_sig()?;
 	
 	let mut tx_copy = runtime.tx.clone();
 	for (i, input) in tx_copy.inputs.iter_mut().enumerate() {
@@ -792,19 +792,19 @@ fn check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
 	
 	// tx_copy.inputs[runtime.index].unlock = unimplemented!(); // need to create sub script
 
-	if sig.hash_type() & 0x1f == 0x02 { // SIGHASH_NONE
+	if hash_type & 0x1f == 0x02 { // SIGHASH_NONE
 		unimplemented!();
-	} else if sig.hash_type() & 0x1f == 0x03 { // SIGHASH_SINGLE
+	} else if hash_type & 0x1f == 0x03 { // SIGHASH_SINGLE
 		unimplemented!();
 	}
-	if sig.hash_type() & 0x80 != 0 { // SIGHASH_ANYONECANPAY
+	if hash_type & 0x80 != 0 { // SIGHASH_ANYONECANPAY
 		unimplemented!();
 	}
 
 	let serialized: crate::err::Result<_> = try {
 		let mut serialized = Vec::new();
 		tx_copy.serialize(&mut serialized)?;
-		write_u32(&mut serialized, sig.hash_type() as u32)?;
+		write_u32(&mut serialized, hash_type as u32)?;
 		serialized
 	};
 
@@ -814,4 +814,80 @@ fn check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
 	}
 
 	Ok(())
+}
+
+// #[derive(Debug)]
+// pub enum HashType {
+// 	SigHashAll = 0x01,
+// 	SigHashNone = 0x02,
+// 	SigHashSingle = 0x03,
+// 	SigHashAnyoneCanPay = 0x80,
+// }
+
+// impl TryFrom<u8> for HashType {
+// 	type Error = Err;
+// 	fn try_from(n: u8) -> Result<Self> {
+// 		match n {
+// 			0x01 => Ok(HashType::SigHashAll),
+// 			0x02 => Ok(HashType::SigHashNone),
+// 			0x03 => Ok(HashType::SigHashSingle),
+// 			0x80 => Ok(HashType::SigHashAnyoneCanPay),
+// 			_ => Err(Err::ValueError("invalid hash type".to_owned()))
+// 		}
+// 	}
+// }
+
+
+
+// verify the famous "pizza transaction"
+// as illustrated here:
+// https://bitcoin.stackexchange.com/questions/32305/how-does-the-ecdsa-verification-algorithm-work-during-transaction
+#[test]
+fn pizza() {
+	use crate::crypto::ecdsa::*;
+	use crate::json::ToJson;
+	use crate::common::*;
+	use crate::crypto::sha256;
+
+	// decode transaction from bytes
+	let raw_tx = hex_to_bytes("01000000018dd4f5fbd5e980fc02f35c6ce145935b11e284605bf599a13c6d415db55d07a1000000008b4830450221009908144ca6539e09512b9295c8a27050d478fbb96f8addbc3d075544dc41328702201aa528be2b907d316d2da068dd9eb1e23243d97e444d59290d2fddf25269ee0e0141042e930f39ba62c6534ee98ed20ca98959d34aa9e057cda01cfd422c6bab3667b76426529382c23f42b9b08d7832d4fee1d6b437a8526e59667ce9c4e9dcebcabbffffffff0200719a81860000001976a914df1bd49a6c9e34dfa8631f2c54cf39986027501b88ac009f0a5362000000434104cd5e9726e6afeae357b1806be25a4c3d3811775835d235417ea746b7db9eeab33cf01674b944c64561ce3388fa1abd0fa88b06c44ce81e2234aa70fe578d455dac00000000").unwrap();
+	let tx = Tx::deserialize(&mut &*raw_tx).unwrap();
+
+	// set input script to the "subscript" from the UTXO
+	let mut tx_copy = tx.clone();
+	tx_copy.inputs[0].unlock = Script::builder()
+		.append(Op::DUP)
+		.append(Op::HASH160)
+		.append(Op::data_hex("46af3fb481837fadbb421727f9959c2d32a36829"))
+		.append(Op::EQUALVERIFY)
+		.append(Op::CHECKSIG)
+		.build();
+
+	// serialize the tx copy
+	let serialized: crate::err::Result<_> = try {
+		let mut serialized = Vec::new();
+		tx_copy.serialize(&mut serialized)?;
+		write_u32(&mut serialized, 1)?;
+		serialized
+	};
+
+	// hash the tx copy
+	let serialized = &*serialized.unwrap();
+	let hash = sha256::compute_double_sha256(serialized);
+	
+	// pull sig & pubkey out of original tx input script
+	let mut ops = tx.inputs[0].unlock.ops();
+
+	let sig = match ops.next().unwrap() {
+		Op::DATA(mut bytes) => ECDSASig::deserialize(&mut bytes),
+		_ => unreachable!(),
+	}.unwrap();
+
+	let pubkey = match ops.next().unwrap() {
+		Op::DATA(mut bytes) => ECDSAPubKey::deserialize(&mut bytes),
+		_ => unreachable!(),
+	}.unwrap();
+
+	// aaaand verify!
+	assert!(pubkey.verify(&sig, &hash));
 }
