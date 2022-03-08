@@ -160,7 +160,6 @@ impl Block {
 		}
 		
 		let mut state = UTXOState::new(utxos, block_height);
-
 		for tx in self.txs.iter().skip(1) {
 			if tx.validate(&mut state, false) == false {
 				return ValidationResult::Invalid;

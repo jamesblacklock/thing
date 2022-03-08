@@ -87,14 +87,14 @@ impl BlocksDB {
 			let mut headers_file = match std::fs::File::open(HEADERS_PATH) {
 				Ok(file) => file,
 				Err(err) => {
-					eprintln!("warning: failed to load headers.dat: {}", err.to_string());
+					log_error!("warning: failed to load headers.dat: {}", err.to_string());
 					return db;
 				}
 			};
 			let ids_file = match std::fs::File::open(IDS_PATH) {
 				Ok(file) => file,
 				Err(err) => {
-					eprintln!("warning: failed to load ids.txt: {}", err.to_string());
+					log_error!("warning: failed to load ids.txt: {}", err.to_string());
 					return db;
 				}
 			};
@@ -105,21 +105,21 @@ impl BlocksDB {
 				let hash = match hash {
 					Ok(hash) => hash,
 					Err(err) => {
-						eprintln!("warning: failed to read from ids.txt: {}", err.to_string());
+						log_error!("warning: failed to read from ids.txt: {}", err.to_string());
 						return db;
 					}
 				};
 				let hash = match Sha256::try_from(hash.as_str()) {
 					Ok(hash) => hash,
 					Err(_) => {
-						eprintln!("warning: ids.txt contains invalid hash: {}", hash);
+						log_error!("warning: ids.txt contains invalid hash: {}", hash);
 						return db;
 					}
 				};
 				let header = match Header::deserialize(&mut headers_file) {
 					Ok(header) => header,
 					Err(_) => {
-						eprintln!("warning: headers.dat is corrupt");
+						log_error!("warning: headers.dat is corrupt");
 						return db;
 					}
 				};
@@ -138,21 +138,32 @@ impl BlocksDB {
 
 	fn save(&self) {
 		if let Err(err) = std::fs::create_dir_all("./data/block_db") {
-			eprintln!("warning: failed to save block_db state: {}", err.to_string());
+			log_error!("warning: failed to save block_db state: {}", err.to_string());
 			return;
 		}
 		let mut file = match std::fs::File::create("./data/block_db/headers.dat") {
 			Ok(file) => file,
 			Err(err) => {
-				eprintln!("warning: failed to save block_db state: {}", err.to_string());
+				log_error!("warning: failed to save block_db state: {}", err.to_string());
 				return;
 			}
 		};
-		for hash in self.hashes.iter() {
+		let mut ids = match std::fs::File::create("./data/block_db/ids.txt") {
+			Ok(file) => file,
+			Err(err) => {
+				log_error!("warning: failed to save block_db state: {}", err.to_string());
+				return;
+			}
+		};
+		for hash in self.hashes.iter().take(self.blocks_validated) {
 			let header = self.headers.get(hash)
 				.expect("warning: hashes Vec contains a hash that is missing from headers HashMap (this should never happen)");
 			if let Err(err) = header.serialize(&mut file) {
-				eprintln!("warning: failed to save block_db state: {}", err.to_string());
+				log_error!("warning: failed to save block_db state: {}", err.to_string());
+				return;
+			}
+			if let Err(err) = writeln!(ids, "{}", hash) {
+				log_error!("warning: failed to save block_db state: {}", err.to_string());
 				return;
 			}
 		}
@@ -167,14 +178,7 @@ impl BlocksDB {
 			.map_err(|err| Err::IOError(err.to_string()))?;
 		let mut file = std::fs::File::create(format!("./data/block_db/{}.dat", hash))
 			.map_err(|err| Err::IOError(err.to_string()))?;
-		let mut ids = std::fs::OpenOptions::new()
-			.create(true)
-			.append(true)
-            .open("./data/block_db/ids.txt")
-			.map_err(|err| Err::IOError(err.to_string()))?;
-		
 		block.serialize(&mut file)?;
-		writeln!(ids, "{}", hash).map_err(|err| Err::IOError(err.to_string()))?;
 
 		Ok(())
 	}
@@ -229,6 +233,7 @@ enum ApplicationMessage {
 	ShowBlock(String),
 	ShowTx(String),
 	ShowUTXOs,
+	Save,
 	Shutdown,
 }
 
@@ -268,8 +273,21 @@ impl Node {
 			let send_to_parent = send_to_parent.clone();
 			// let handle = 
 			thread::spawn(move || {
-				while let Some(message) = reader.receive().unwrap() {
-					send_to_parent.send((i, message)).unwrap();
+				loop {
+					match reader.receive() {
+						Ok(Some(message)) => {
+							if let Err(_) = send_to_parent.send((i, message)) {
+								break;
+							}
+						},
+						Ok(None) => {
+							break;
+						},
+						Err(err) => {
+							log_error!("error: {}", err.to_string());
+							break;
+						},
+					}
 				}
 			});
 			
@@ -311,7 +329,7 @@ impl Node {
 			let mut utxos_file = match std::fs::File::open(UTXOS_PATH) {
 				Ok(file) => file,
 				Err(err) => {
-					eprintln!("warning: failed to load utxos.dat: {}", err.to_string());
+					log_error!("warning: failed to load utxos.dat: {}", err.to_string());
 					return HashMap::new();
 				}
 			};
@@ -325,6 +343,9 @@ impl Node {
 					let utxo = TxOutput::deserialize(&mut utxos_file)?;
 					utxos.insert(UTXOID(hash, index), utxo);
 				}
+
+				log_info!("loaded {} utxos", count);
+
 				utxos
 			};
 
@@ -333,7 +354,7 @@ impl Node {
 					return utxos
 				},
 				Err(err) => {
-					eprintln!("warning: failed to save utxo set: {}", err.to_string());
+					log_error!("warning: failed to save utxo set: {}", err.to_string());
 					return HashMap::new();
 				},
 			}
@@ -350,7 +371,7 @@ impl Node {
 		let mut file = match std::fs::File::create("./data/utxos.dat") {
 			Ok(file) => file,
 			Err(err) => {
-				eprintln!("warning: failed to save utxo set: {}", err.to_string());
+				log_error!("warning: failed to save utxo set: {}", err.to_string());
 				return;
 			}
 		};
@@ -361,14 +382,16 @@ impl Node {
 				common::write_u32(&mut file, k.1)?;
 				v.serialize(&mut file)?;
 			}
+
+			log_info!("saved {} utxos", self.utxos.len());
 		};
 
 		if let Err(err) = result {
-			eprintln!("warning: failed to save utxo set: {}", err.to_string());
+			log_error!("warning: failed to save utxo set: {}", err.to_string());
 		}
 	}
 
-	fn shutdown(self) {
+	fn save_state(&self) {
 		self.block_db.save();
 		self.save_utxos();
 	}
@@ -561,6 +584,125 @@ impl Node {
 			println!("<not found>");
 		}
 	}
+
+	fn io_thread(send_cmd: mpsc::Sender<ApplicationMessage>, recv_cmd_done: mpsc::Receiver<()>) {
+		let stdin = std::io::stdin();
+		let mut stdout = std::io::stdout();
+
+		loop {
+			let mut buf = String::new();
+			stdout.write(">> ".as_bytes()).unwrap();
+			stdout.flush().unwrap();
+			stdin.read_line(&mut buf).unwrap();
+			let tok: Vec<_> = buf.split_ascii_whitespace().collect();
+			
+			let result: Result<()> = try {
+				match *tok {
+					["exit"] => {
+						send_cmd.send(ApplicationMessage::Shutdown).or(Err(Err::ChannelError))?;
+						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
+					},
+					["save"] => {
+						send_cmd.send(ApplicationMessage::Save).or(Err(Err::ChannelError))?;
+						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
+					},
+					["mempool"] => {
+						send_cmd.send(ApplicationMessage::ShowMempool).or(Err(Err::ChannelError))?;
+						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
+					},
+					["db"] => {
+						send_cmd.send(ApplicationMessage::ShowBlockHashes).or(Err(Err::ChannelError))?;
+						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
+					},
+					["header", id] => {
+						send_cmd.send(ApplicationMessage::ShowHeader(id.into())).or(Err(Err::ChannelError))?;
+						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
+					},
+					["block", id] => {
+						send_cmd.send(ApplicationMessage::ShowBlock(id.into())).or(Err(Err::ChannelError))?;
+						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
+					},
+					["tx", id] => {
+						send_cmd.send(ApplicationMessage::ShowTx(id.into())).or(Err(Err::ChannelError))?;
+						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
+					},
+					["utxos"] => {
+						send_cmd.send(ApplicationMessage::ShowUTXOs).or(Err(Err::ChannelError))?;
+						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
+					},
+					[] => { continue; },
+					_ => {
+						println!("<invalid command>");
+						continue;
+					},
+				}
+			};
+
+			if result.is_err() {
+				log_error!("the application quit unexpectedly.");
+				break;
+			}
+		}
+	}
+
+	fn message_thread(&mut self, recv_cmd: mpsc::Receiver<ApplicationMessage>, send_cmd_done: mpsc::Sender<()>) {
+		loop {
+			if let Ok((i, m)) = self.recv.try_recv() {
+				if let Err(e) = self.handle_message(i, m) {
+					log_error!("{}", e);
+				}
+			}
+			if let Ok(m) = recv_cmd.try_recv() {
+				match m {
+					ApplicationMessage::Shutdown => {		
+						println!("<shutting down>");
+						self.save_state();
+						send_cmd_done.send(()).unwrap();
+						break;
+					},
+					ApplicationMessage::Save => {
+						self.save_state();
+						println!("state saved!");
+						send_cmd_done.send(()).unwrap();
+					},
+					ApplicationMessage::ShowMempool => {
+						if self.mempool.txs.len() == 0 {
+							println!("<empty>");
+						}
+						for id in self.mempool.txs.keys() {
+							println!("{}", id);
+						}
+					},
+					ApplicationMessage::ShowBlockHashes => {
+						for (i, hash) in self.block_db.hashes.iter().take(self.block_db.blocks_validated).enumerate() {
+							println!("{:010}: {}", i, hash);
+						}
+					},
+					ApplicationMessage::ShowHeader(id) => {
+						Node::show_object(id, |id| self.block_db.headers.get(&id).map(|e| e.clone()));
+					},
+					ApplicationMessage::ShowBlock(id) => {
+						Node::show_object(id, |id| self.block_db.load_block(id).ok());
+					},
+					ApplicationMessage::ShowTx(id) => {
+						Node::show_object(id, |id| self.mempool.txs.get(&id).map(|e| e.clone()));
+					},
+					ApplicationMessage::ShowUTXOs => {
+						if self.utxos.len() == 0 {
+							println!("<empty>");
+						}
+						for (id, utxo) in self.utxos.iter() {
+							println!("{:?}:\n{}\n", id, utxo.to_json());
+						}
+					},
+
+				}
+				send_cmd_done.send(()).unwrap();
+			}
+			
+			thread::yield_now();
+		}
+	}
 	
 	pub fn run(mut self) -> Result<()> {
 		for (i, peer) in self.peers.iter_mut() {
@@ -571,109 +713,15 @@ impl Node {
 		
 		let (send_cmd, recv_cmd) = mpsc::channel();
 		let (send_cmd_done, recv_cmd_done) = mpsc::channel();
-		let t = thread::spawn(move || {
-			loop {
-				if let Ok((i, m)) = self.recv.try_recv() {
-					if let Err(e) = self.handle_message(i, m) {
-						log_error!("{}", e);
-					}
-				}
-				if let Ok(m) = recv_cmd.try_recv() {
-					match m {
-						ApplicationMessage::Shutdown => {		
-							println!("<shutting down>");
-							self.shutdown();
-							send_cmd_done.send(()).unwrap();
-							break;
-						},
-						ApplicationMessage::ShowMempool => {
-							if self.mempool.txs.len() == 0 {
-								println!("<empty>");
-							}
-							for id in self.mempool.txs.keys() {
-								println!("{}", id);
-							}
-						},
-						ApplicationMessage::ShowBlockHashes => {
-							for (i, hash) in self.block_db.hashes.iter().take(self.block_db.blocks_validated).enumerate() {
-								println!("{:010}: {}", i, hash);
-							}
-						},
-						ApplicationMessage::ShowHeader(id) => {
-							Node::show_object(id, |id| self.block_db.headers.get(&id).map(|e| e.clone()));
-						},
-						ApplicationMessage::ShowBlock(id) => {
-							Node::show_object(id, |id| self.block_db.load_block(id).ok());
-						},
-						ApplicationMessage::ShowTx(id) => {
-							Node::show_object(id, |id| self.mempool.txs.get(&id).map(|e| e.clone()));
-						},
-						ApplicationMessage::ShowUTXOs => {
-							if self.utxos.len() == 0 {
-								println!("<empty>");
-							}
-							for (id, utxo) in self.utxos.iter() {
-								println!("{:?}:\n{}\n", id, utxo.to_json());
-							}
-						},
-					}
-					send_cmd_done.send(()).unwrap();
-				}
-				
-				thread::yield_now();
-			}
-		});
-
-		let stdin = std::io::stdin();
-		let mut stdout = std::io::stdout();
-
-		let send_cmd_ctrlc = send_cmd.clone();
-		ctrlc::set_handler(move || send_cmd_ctrlc.send(ApplicationMessage::Shutdown).unwrap()).unwrap();
 		
-		loop {
-			let mut buf = String::new();
-			stdout.write(">> ".as_bytes()).unwrap();
-			stdout.flush().unwrap();
-			stdin.read_line(&mut buf).unwrap();
-			let tok: Vec<_> = buf.split_ascii_whitespace().collect();
-			match *tok {
-				["exit"] => {
-					send_cmd.send(ApplicationMessage::Shutdown).unwrap();
-					recv_cmd_done.recv().unwrap();
-					break;
-				},
-				["mempool"] => {
-					send_cmd.send(ApplicationMessage::ShowMempool).unwrap();
-					recv_cmd_done.recv().unwrap();
-				},
-				["db"] => {
-					send_cmd.send(ApplicationMessage::ShowBlockHashes).unwrap();
-					recv_cmd_done.recv().unwrap();
-				},
-				["header", id] => {
-					send_cmd.send(ApplicationMessage::ShowHeader(id.into())).unwrap();
-					recv_cmd_done.recv().unwrap();
-				},
-				["block", id] => {
-					send_cmd.send(ApplicationMessage::ShowBlock(id.into())).unwrap();
-					recv_cmd_done.recv().unwrap();
-				},
-				["tx", id] => {
-					send_cmd.send(ApplicationMessage::ShowTx(id.into())).unwrap();
-					recv_cmd_done.recv().unwrap();
-				},
-				["utxos"] => {
-					send_cmd.send(ApplicationMessage::ShowUTXOs).unwrap();
-					recv_cmd_done.recv().unwrap();
-				},
-				[] => {},
-				_ => {
-					println!("<invalid command>");
-				},
-			}
-		}
-
-		t.join().unwrap();
+		let send_cmd_ctrlc = send_cmd.clone();
+		ctrlc::set_handler(move || {
+			let _ = send_cmd_ctrlc.send(ApplicationMessage::Shutdown);
+		}).unwrap();
+		
+		thread::spawn(move || Node::io_thread(send_cmd, recv_cmd_done));
+		let _ = thread::spawn(move || Node::message_thread(&mut self, recv_cmd, send_cmd_done)).join();
+		
 		Ok(())
 	}
 }

@@ -299,7 +299,8 @@ impl Deserialize for ECDSASig {
 		if total_size != 68 + r_extra_byte as u8 + s_extra_byte as u8 {
 			return Err(Err::ValueError("invalid signature".to_owned()));
 		} else if r_extra_byte && r[0] < 0x80 || s_extra_byte && s[0] < 0x80 {
-			eprintln!("warning: non-standard signature encoding");
+			// apparently these happen all the time, so they really aren't that "non-standard"
+			// log_error!("warning: non-standard signature encoding");
 			// return Err(Err::ValueError("invalid signature".to_owned()));
 		}
 

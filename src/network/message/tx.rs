@@ -198,6 +198,12 @@ impl ToJson for Output {
 	}
 }
 
+impl std::fmt::Debug for TxOutput {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		write!(f, "{}", self.to_json())
+	}
+}
+
 impl Default for Output {
 	fn default() -> Self {
 		Output {
@@ -313,6 +319,7 @@ impl Tx {
 		for(i, input) in self.inputs.iter().enumerate() {
 			let id = input.utxo_id();
 			if !utxos.contains(&id) {
+				log_info!("invalid UTXO in tx input: {:?}", input.utxo_id());
 				return false;
 			}
 			let utxo = utxos.remove(id);

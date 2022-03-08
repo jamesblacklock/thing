@@ -15,7 +15,7 @@ use crate::{
 mod op;
 pub use op::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Script(Vec<u8>);
 
 impl Script {
