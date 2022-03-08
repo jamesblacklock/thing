@@ -309,7 +309,7 @@ impl Deserialize for ECDSASig {
 }
 
 #[test]
-fn test_decompress() {
+fn decompress() {
 	// first item: compressed pub key (i.e. x coord preceded by 0x02 or 0x03)
 	// second item: y coord
 	let keys = [
@@ -325,7 +325,7 @@ fn test_decompress() {
 }
 
 // #[test]
-// fn test_tangents() {
+// fn tangents() {
 // 	let points = [
 // 		(ECDSAPoint::Coord { x: 5.into(), y: 11.into() }, u256::from(2), u256::from(17),   u256::from(12)), 
 // 		(ECDSAPoint::Coord { x: 1.into(), y:  3.into() }, u256::from(4), u256::from(2773), u256::from(2312)), 
@@ -339,7 +339,7 @@ fn test_decompress() {
 // }
 
 #[test]
-fn test_double_points() {
+fn double_points() {
 	let points = [
 		(
 			ECDSA_BASE,
@@ -397,7 +397,7 @@ fn test_double_points() {
 }
 
 #[test]
-fn test_add_points() {
+fn add_points() {
 	let points = [
 		(
 			ECDSAPoint::Coord {
@@ -455,7 +455,7 @@ fn test_add_points() {
 }
 
 #[test]
-fn test_mul_point_scalar() {
+fn mul_point_scalar() {
 	let points = [
 		(
 			ECDSAPoint::Coord {
@@ -487,7 +487,7 @@ fn test_mul_point_scalar() {
 }
 
 #[test]
-fn test_verify() {
+fn verify() {
 	let sigs = [
 		(
 			// ECDSAPubKey {

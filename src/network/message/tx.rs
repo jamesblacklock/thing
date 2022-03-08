@@ -316,7 +316,7 @@ impl Tx {
 		}
 
 		let mut available = 0;
-		for(i, input) in self.inputs.iter().enumerate() {
+		for (i, input) in self.inputs.iter().enumerate() {
 			let id = input.utxo_id();
 			if !utxos.contains(&id) {
 				log_info!("invalid UTXO in tx input: {:?}", input.utxo_id());
@@ -327,8 +327,9 @@ impl Tx {
 			
 			let mut runtime = ScriptRuntime::new(&self, i, &utxo.lock);
 			let result = runtime.execute(&input.unlock)
-				.and_then(|_| runtime.execute(&utxo.lock));
-			if let Err(_) = result {
+				.and_then(|_| runtime.execute(&utxo.lock))
+				.and_then(|_| runtime.finalize());
+			if result.unwrap_or(StackObject::Empty).is_falsey() {
 				return false;
 			}
 		}

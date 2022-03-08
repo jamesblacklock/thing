@@ -137,6 +137,7 @@ impl <'a> Iterator for ScriptIterator<'a> {
 	}
 }
 
+#[derive(Clone)]
 pub enum StackObject {
 	Empty,
 	Int(i64),
@@ -144,12 +145,31 @@ pub enum StackObject {
 }
 
 impl StackObject {
-	fn is_truthy(&self) -> bool {
+	pub fn to_i64(&self) -> i64 {
+		match self {
+			StackObject::Empty => 0,
+			StackObject::Int(n) => *n,
+			StackObject::Bytes(bytes) => {
+				let mut n = 0i64;
+				for b in bytes.iter().rev().copied() {
+					n <<= 8;
+					n += b as i64;
+				}
+				n
+			}
+		}
+	}
+
+	pub fn is_truthy(&self) -> bool {
 		match *self {
 			StackObject::Empty => false,
 			StackObject::Int(n) => n != 0,
 			StackObject::Bytes(_) => true,
 		}
+	}
+
+	pub fn is_falsey(&self) -> bool {
+		!self.is_truthy()
 	}
 
 	pub fn to_ecdsa_pubkey(&self) -> Result<ECDSAPubKey> {
@@ -177,7 +197,11 @@ impl fmt::Debug for StackObject {
 		match self {
 			StackObject::Empty    => write!(f, "Empty"),
 			StackObject::Int(n)   => write!(f, "Int({})", n),
-			StackObject::Bytes(v) => fmt_data(f, "", &*v),
+			StackObject::Bytes(v) => {
+				write!(f, "Bytes(")?;
+				fmt_data(f, "", &*v)?;
+				write!(f, ")")
+			}
 		}
 	}
 }
@@ -188,6 +212,8 @@ pub struct ScriptRuntime<'a> {
 	lock: &'a Script,
 	stack: Vec<StackObject>,
 	invalid: bool,
+	depth: u32,
+	skip_depth: u32,
 }
 
 impl <'a> ScriptRuntime<'a> {
@@ -198,6 +224,8 @@ impl <'a> ScriptRuntime<'a> {
 			lock,
 			stack: Vec::new(),
 			invalid: false,
+			skip_depth: 0,
+			depth: 0,
 		}
 	}
 
@@ -211,21 +239,14 @@ impl <'a> ScriptRuntime<'a> {
 		Ok(())
 	}
 
-	pub fn is_valid(&self) -> bool {
-		if self.invalid || self.stack.len() == 0 {
-			false
+	pub fn finalize(self) -> Result<StackObject> {
+		if self.depth != 0 || self.skip_depth != 0 {
+			Err(Err::ScriptError("expected OP_ENDIF before end of script".to_owned()))
+		} else if self.invalid {
+			Err(Err::ScriptError("script execution resulted in invalid state".to_owned()))
 		} else {
-			self.stack[self.stack.len() - 1].is_truthy()
+			Ok(self.stack.last().unwrap_or(&StackObject::Empty).clone())
 		}
-	}
-
-	pub fn push_stack(&mut self, item: StackObject) -> Result<()> {
-		self.stack.push(item);
-		Ok(())
-	}
-
-	pub fn pop_stack(&mut self) -> Result<StackObject> {
-		self.stack.pop().ok_or(Err::ScriptError("tried to pop empty stack".to_owned()))
 	}
 }
 
