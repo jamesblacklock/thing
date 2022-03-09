@@ -4,6 +4,7 @@ use crate::{
 	network::Serialize,
 	common::write_u32,
 	crypto::sha256,
+	crypto::ripemd160,
 };
 
 const OP_0: u8                   = 0;
@@ -648,11 +649,11 @@ impl <'a> Op<'a> {
 			Op::MIN                 => unimplemented!(),
 			Op::MAX                 => unimplemented!(),
 			Op::WITHIN              => unimplemented!(),
-			Op::RIPEMD160           => unimplemented!(),
+			Op::RIPEMD160           => Op::do_ripemd160(runtime),
 			Op::SHA1                => unimplemented!(),
-			Op::SHA256              => unimplemented!(),
-			Op::HASH160             => unimplemented!(),
-			Op::HASH256             => unimplemented!(),
+			Op::SHA256              => Op::do_sha256(runtime),
+			Op::HASH160             => Op::do_hash160(runtime),
+			Op::HASH256             => Op::do_hash256(runtime),
 			Op::CODESEPARATOR       => Ok(()),
 			Op::CHECKSIG            => Op::do_check_sig(runtime),
 			Op::CHECKSIGVERIFY      => unimplemented!(),
@@ -752,6 +753,31 @@ impl <'a> Op<'a> {
 			None => Err(Err::ScriptError("tried to DUP when stack was empty".to_owned()))
 		}
 	}
+
+	fn do_ripemd160(runtime: &mut ScriptRuntime) -> Result<()> {
+		let item = Op::do_pop_stack(runtime)?;
+		let hash = ripemd160::compute_ripemd160(&*item.to_vec());
+		Op::do_push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
+	}
+
+	fn do_sha256(runtime: &mut ScriptRuntime) -> Result<()> {
+		let item = Op::do_pop_stack(runtime)?;
+		let hash = sha256::compute_sha256(&*item.to_vec());
+		Op::do_push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
+	}
+
+	fn do_hash160(runtime: &mut ScriptRuntime) -> Result<()> {
+		let item = Op::do_pop_stack(runtime)?;
+		let hash = sha256::compute_sha256(ripemd160::compute_ripemd160(&*item.to_vec()).as_bytes());
+		Op::do_push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
+	}
+
+	fn do_hash256(runtime: &mut ScriptRuntime) -> Result<()> {
+		let item = Op::do_pop_stack(runtime)?;
+		let hash = sha256::compute_double_sha256(&*item.to_vec());
+		Op::do_push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
+	}
+
 
 	fn do_check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
 		let pub_key = Op::do_pop_stack(runtime)?.to_ecdsa_pubkey()?;
