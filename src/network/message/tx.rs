@@ -335,7 +335,7 @@ impl Tx {
 				return false;
 			}
 
-			log_info!("    validated input {}/{}", i, count);
+			log_info!("    validated input {}/{}", i+1, count);
 		}
 
 		for (i, output) in self.outputs.iter().cloned().enumerate() {
