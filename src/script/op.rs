@@ -3,7 +3,7 @@ use super::*;
 use crate::{
 	network::Serialize,
 	common::write_u32,
-	crypto::sha256::compute_double_sha256,
+	crypto::sha256,
 };
 
 const OP_0: u8                   = 0;
@@ -785,12 +785,12 @@ impl <'a> Op<'a> {
 			serialized
 		};
 
-		let hash = compute_double_sha256(&*serialized?);
-		if pub_key.verify(&sig, &hash) == false {
-			return Err(Err::ScriptError("ECDSA signature did not verify".to_owned()))
+		let hash = sha256::compute_double_sha256(&*serialized?);
+		if pub_key.verify(&sig, &hash) {
+			Op::do_push_stack(runtime, StackObject::Int(1))
+		} else {
+			Op::do_push_stack(runtime, StackObject::Empty)
 		}
-
-		Ok(())
 	}
 }
 

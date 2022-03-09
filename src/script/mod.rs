@@ -160,6 +160,14 @@ impl StackObject {
 		}
 	}
 
+	pub fn to_vec(&self) -> Vec<u8> {
+		match self {
+			StackObject::Empty => Vec::new(),
+			StackObject::Int(n) => n.to_le_bytes().to_vec(),
+			StackObject::Bytes(bytes) => bytes.clone(),
+		}
+	}
+
 	pub fn is_truthy(&self) -> bool {
 		match *self {
 			StackObject::Empty => false,
