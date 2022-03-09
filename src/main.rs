@@ -252,6 +252,7 @@ struct Node {
 	mempool: Mempool,
 	block_db: BlocksDB,
 	utxos: HashMap<UTXOID, TxOutput>,
+	last_save_time: u64,
 }
 
 impl Node {
@@ -315,6 +316,7 @@ impl Node {
 			mempool: Mempool::new(),
 			block_db: BlocksDB::load(),
 			utxos: Node::load_utxos(),
+			last_save_time: common::now(),
 		}
 	}
 
@@ -389,9 +391,10 @@ impl Node {
 		}
 	}
 
-	fn save_state(&self) {
+	fn save_state(&mut self) {
 		self.block_db.save();
 		self.save_utxos();
+		self.last_save_time = common::now();
 	}
 
 	fn handle_message(&mut self, peer_index: usize, m: Message) -> Result<()> {
@@ -522,16 +525,12 @@ impl Node {
 			self.block_db.store_block(block)?;
 			log_info!("validated block {:010}: {}", self.block_db.blocks_validated, hash);
 
-			if self.block_db.blocks_validated % 500 == 0 {
+			let now = common::now();
+			if now - self.last_save_time > 120 {
 				self.save_state();
 				log_info!("saved state.");
 			}
-			
-			// if self.block_db.blocks_validated == 91842 {
-			// 	println!("{}", diff.added.values().collect::<Vec<_>>()[0].to_json());
-			// 	println!("{}", self.utxos[diff.added.keys().collect::<Vec<_>>()[0]].to_json());
-			// 	println!();
-			// }
+
 			diff.apply(&mut self.utxos);
 			self.block_db.blocks_validated += 1;
 		} else {
