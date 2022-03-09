@@ -99,8 +99,8 @@ impl BlocksDB {
 				}
 			};
 
-			let mut hashes = db.hashes.clone();
-			let mut headers = db.headers.clone();
+			let mut hashes = Vec::new();
+			let mut headers = HashMap::new();
 			for hash in BufReader::new(ids_file).lines() {
 				let hash = match hash {
 					Ok(hash) => hash,
