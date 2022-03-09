@@ -265,22 +265,23 @@ impl ToJson for ECDSASig {
 	}
 }
 
-fn read_der_32_byte_int(stream: &mut dyn Read) -> Result<(bool, [u8; 32])> {
+fn read_der_32_byte_int(stream: &mut dyn Read) -> Result<[u8; 32]> {
 	// "int" indicator
 	if read_u8(stream)? != 0x02 {
 		return Err(Err::ValueError("invalid signature".to_owned()));
 	}
-	let size = read_u8(stream)?;
+	let size = read_u8(stream)? as usize;
 	if size > 33 {
 		return Err(Err::ValueError("invalid signature".to_owned()));
 	} else if size == 33 && read_u8(stream)? != 0 {
 		return Err(Err::ValueError("invalid signature".to_owned()));
 	}
+	let size = std::cmp::min(size, 32);
 	let mut value = [0; 32];
-	read_buf_exact(stream, &mut value)?;
-	let temp = value.iter().copied().rev().collect::<Vec<_>>();
-	value.copy_from_slice(&temp);
-	Ok((size == 33, value))
+	read_buf_exact(stream, &mut value[0..size])?;
+	let temp = value.iter().copied().take(size).rev().collect::<Vec<_>>();
+	value[0..size].copy_from_slice(&temp);
+	Ok(value)
 }
 
 impl Deserialize for ECDSASig {
@@ -293,15 +294,8 @@ impl Deserialize for ECDSASig {
 		if total_size < 68 || total_size > 70 {
 			return Err(Err::ValueError("invalid signature".to_owned()));
 		}
-		let (r_extra_byte, r) = read_der_32_byte_int(stream)?;
-		let (s_extra_byte, s) = read_der_32_byte_int(stream)?;
-		if total_size != 68 + r_extra_byte as u8 + s_extra_byte as u8 {
-			return Err(Err::ValueError("invalid signature".to_owned()));
-		} else if r_extra_byte && r[0] < 0x80 || s_extra_byte && s[0] < 0x80 {
-			// apparently these happen all the time, so they really aren't that "non-standard"
-			// log_error!("warning: non-standard signature encoding");
-			// return Err(Err::ValueError("invalid signature".to_owned()));
-		}
+		let r = read_der_32_byte_int(stream)?;
+		let s = read_der_32_byte_int(stream)?;
 
 		Ok(ECDSASig{s: s.into(), r: r.into()})
 	}
