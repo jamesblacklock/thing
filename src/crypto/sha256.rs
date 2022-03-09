@@ -9,10 +9,6 @@ pub struct Sha256 {
 }
 
 impl Sha256 {
-	pub fn default() -> Sha256 {
-		Sha256 { digest: [0; 8] }
-	}
-
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		for i in self.as_bytes().iter().rev() {
 			write!(f, "{:02x}", i)?;
@@ -35,6 +31,12 @@ impl Sha256 {
 	}
 }
 
+impl Default for Sha256 {
+	fn default() -> Sha256 {
+		Sha256 { digest: [0; 8] }
+	}
+}
+
 impl std::convert::From<[u8; 32]> for Sha256 {
 	fn from(bytes: [u8; 32]) -> Self {
 		let words: &[u32] = unsafe { std::slice::from_raw_parts(std::mem::transmute(&bytes), 8)};
@@ -54,12 +56,6 @@ impl std::convert::TryFrom<&str> for Sha256 {
 		Ok(Sha256::from(digest))
 	}
 }
-
-// impl <'a> std::convert::From<&'a Sha256> for &'a [u8] {
-// 	fn from(sha256: &'a Sha256) -> Self {
-// 		sha256.as_bytes()
-// 	}
-// }
 
 impl fmt::Debug for Sha256 {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
