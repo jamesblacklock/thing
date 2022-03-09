@@ -481,7 +481,7 @@ pub fn compute_ripemd160<'a, T: Into<&'a [u8]>>(message: T) -> Ripemd160 {
 	md_finish(&mut digest, remainder, len);
 
 	for i in 0..5 {
-		digest[i] = u32::from_be_bytes(digest[i].to_ne_bytes());
+		digest[i] = u32::from_le_bytes(digest[i].to_ne_bytes());
 	}
 
 	Ripemd160 { digest }
@@ -490,12 +490,12 @@ pub fn compute_ripemd160<'a, T: Into<&'a [u8]>>(message: T) -> Ripemd160 {
 #[test]
 fn ripemd160() {
 	// cf. https://homes.esat.kuleuven.be/~bosselae/ripemd160.html
-	assert!(compute_ripemd160("".as_bytes()).digest == [0x9c1185a5, 0xc5e9fc54, 0x61280897, 0x7ee8f548, 0xb2258d31]);
-	assert!(compute_ripemd160("a".as_bytes()).digest == [0x0bdc9d2d, 0x256b3ee9, 0xdaae347b, 0xe6f4dc83, 0x5a467ffe]);
-	assert!(compute_ripemd160("abc".as_bytes()).digest == [0x8eb208f7, 0xe05d987a, 0x9b044a8e, 0x98c6b087, 0xf15a0bfc]);
-	assert!(compute_ripemd160("message digest".as_bytes()).digest == [0x5d0689ef, 0x49d2fae5, 0x72b881b1, 0x23a85ffa, 0x21595f36]);
-	assert!(compute_ripemd160("abcdefghijklmnopqrstuvwxyz".as_bytes()).digest == [0xf71c2710, 0x9c692c1b, 0x56bbdceb, 0x5b9d2865, 0xb3708dbc]);
-	assert!(compute_ripemd160("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq".as_bytes()).digest == [0x12a05338, 0x4a9c0c88, 0xe405a06c, 0x27dcf49a, 0xda62eb2b]);
-	assert!(compute_ripemd160("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".as_bytes()).digest == [0xb0e20b6e, 0x31166402, 0x86ed3a87, 0xa5713079, 0xb21f5189]);
-	assert!(compute_ripemd160("12345678901234567890123456789012345678901234567890123456789012345678901234567890".as_bytes()).digest == [0x9b752e45, 0x573d4b39, 0xf4dbd332, 0x3cab82bf, 0x63326bfb]);
+	assert!(compute_ripemd160("".as_bytes()).digest == [0xa585119c, 0x54fce9c5, 0x97082861, 0x48f5e87e, 0x318d25b2]);
+	assert!(compute_ripemd160("a".as_bytes()).digest == [0x2d9ddc0b, 0xe93e6b25, 0x7b34aeda, 0x83dcf4e6, 0xfe7f465a]);
+	assert!(compute_ripemd160("abc".as_bytes()).digest == [0xf708b28e, 0x7a985de0, 0x8e4a049b, 0x87b0c698, 0xfc0b5af1]);
+	assert!(compute_ripemd160("message digest".as_bytes()).digest == [0xef89065d, 0xe5fad249, 0xb181b872, 0xfa5fa823, 0x365f5921]);
+	assert!(compute_ripemd160("abcdefghijklmnopqrstuvwxyz".as_bytes()).digest == [0x10271cf7, 0x1b2c699c, 0xebdcbb56, 0x65289d5b, 0xbc8d70b3]);
+	assert!(compute_ripemd160("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq".as_bytes()).digest == [0x3853a012, 0x880c9c4a, 0x6ca005e4, 0x9af4dc27, 0x2beb62da]);
+	assert!(compute_ripemd160("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".as_bytes()).digest == [0x6e0be2b0, 0x02641631, 0x873aed86, 0x793071a5, 0x89511fb2]);
+	assert!(compute_ripemd160("12345678901234567890123456789012345678901234567890123456789012345678901234567890".as_bytes()).digest == [0x452e759b, 0x394b3d57, 0x32d3dbf4, 0xbf82ab3c, 0xfb6b3263]);
 }

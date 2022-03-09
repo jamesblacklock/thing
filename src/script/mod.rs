@@ -200,6 +200,17 @@ impl StackObject {
 	}
 }
 
+impl std::cmp::PartialEq for StackObject {
+	fn eq(&self, other: &StackObject) -> bool {
+		match (self, other) {
+			(&StackObject::Empty,        &StackObject::Empty)        => true,
+			(&StackObject::Int(ref i),   &StackObject::Int(ref j))   => i == j,
+			(&StackObject::Bytes(ref i), &StackObject::Bytes(ref j)) => i == j,
+			_ => unimplemented!(),
+		}
+	}
+}
+
 impl fmt::Debug for StackObject {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {

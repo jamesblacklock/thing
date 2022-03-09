@@ -255,7 +255,7 @@ struct Node {
 }
 
 impl Node {
-	pub fn new(addrs: Vec<String>) -> Result<Node> {
+	pub fn new(addrs: Vec<String>) -> Node {
 		let mut peers = HashMap::new();
 		let (send_to_parent, recv) = mpsc::channel();
 
@@ -271,7 +271,7 @@ impl Node {
 
 			let mut reader = writer.try_clone().unwrap();
 			let send_to_parent = send_to_parent.clone();
-			// let handle = 
+			
 			thread::spawn(move || {
 				loop {
 					match reader.receive() {
@@ -304,20 +304,18 @@ impl Node {
 		}
 
 		if peers.len() == 0 {
-			return Err(Err::NetworkError("no peers connected!".to_owned()));
+			log_warn!("No peers connected!");
 		}
 
 		log_debug!("{} peers conntected.", peers.len());
 		
-		let node = Node {
+		Node {
 			peers,
 			recv,
 			mempool: Mempool::new(),
 			block_db: BlocksDB::load(),
 			utxos: Node::load_utxos(),
-		};
-
-		Ok(node)
+		}
 	}
 
 	fn load_utxos() -> HashMap<UTXOID, TxOutput> {
@@ -728,6 +726,6 @@ impl Node {
 
 fn main() -> Result<()> {
 	let addrs = std::env::args().skip(1).collect();
-	let node = Node::new(addrs)?;
+	let node = Node::new(addrs);
 	node.run()
 }

@@ -271,8 +271,7 @@ fn read_der_32_byte_int(stream: &mut dyn Read) -> Result<(bool, [u8; 32])> {
 		return Err(Err::ValueError("invalid signature".to_owned()));
 	}
 	let size = read_u8(stream)?;
-	// TODO: valid signatures can be shorter than 32 bytes
-	if size < 32 || size > 33 {
+	if size > 33 {
 		return Err(Err::ValueError("invalid signature".to_owned()));
 	} else if size == 33 && read_u8(stream)? != 0 {
 		return Err(Err::ValueError("invalid signature".to_owned()));

@@ -625,8 +625,8 @@ impl <'a> Op<'a> {
 			Op::SWAP                => unimplemented!(),
 			Op::TUCK                => unimplemented!(),
 			Op::SIZE                => unimplemented!(),
-			Op::EQUAL               => unimplemented!(),
-			Op::EQUALVERIFY         => unimplemented!(),
+			Op::EQUAL               => Op::do_equal(runtime),
+			Op::EQUALVERIFY         => Op::do_equal(runtime).and_then(|_| Op::do_verify(runtime, "OP_EQUALVERIFY")),
 			Op::RESERVED1           => Op::do_reserved("OP_RESERVED1"),
 			Op::RESERVED2           => Op::do_reserved("OP_RESERVED2"),
 			Op::OP_1ADD             => unimplemented!(),
@@ -656,7 +656,7 @@ impl <'a> Op<'a> {
 			Op::HASH256             => Op::do_hash256(runtime),
 			Op::CODESEPARATOR       => Ok(()),
 			Op::CHECKSIG            => Op::do_check_sig(runtime),
-			Op::CHECKSIGVERIFY      => unimplemented!(),
+			Op::CHECKSIGVERIFY      => Op::do_check_sig(runtime).and_then(|_| Op::do_verify(runtime, "OP_CHECKSIGVERIFY")),
 			Op::CHECKMULTISIG       => unimplemented!(),
 			Op::CHECKMULTISIGVERIFY => unimplemented!(),
 			Op::NOP1                => Ok(()),
@@ -679,6 +679,24 @@ impl <'a> Op<'a> {
 		} else {
 			Ok(())
 		}
+	}
+
+	fn do_equal(runtime: &mut ScriptRuntime) -> Result<()> {
+		let i = Op::do_pop_stack(runtime)?;
+		let j = Op::do_pop_stack(runtime)?;
+		if i == j {
+			Op::do_push_stack(runtime, StackObject::Int(1))
+		} else {
+			Op::do_push_stack(runtime, StackObject::Empty)
+		}
+	}
+
+	fn do_verify(runtime: &mut ScriptRuntime, opcode: &str) -> Result<()> {
+		let value = Op::do_pop_stack(runtime)?;
+		if value.is_falsey() {
+			return Err(Err::ScriptError(format!("{}: verification failed", opcode)))
+		}
+		Ok(())
 	}
 
 	fn do_if(runtime: &mut ScriptRuntime) -> Result<()> {
@@ -768,7 +786,7 @@ impl <'a> Op<'a> {
 
 	fn do_hash160(runtime: &mut ScriptRuntime) -> Result<()> {
 		let item = Op::do_pop_stack(runtime)?;
-		let hash = sha256::compute_sha256(ripemd160::compute_ripemd160(&*item.to_vec()).as_bytes());
+		let hash = ripemd160::compute_ripemd160(sha256::compute_sha256(&*item.to_vec()).as_bytes());
 		Op::do_push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
 	}
 
