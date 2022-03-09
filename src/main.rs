@@ -521,6 +521,12 @@ impl Node {
 			let hash = block.header.compute_hash();
 			self.block_db.store_block(block)?;
 			log_info!("validated block {:010}: {}", self.block_db.blocks_validated, hash);
+
+			if self.block_db.blocks_validated % 500 == 0 {
+				self.save_state();
+				log_info!("saved state.");
+			}
+			
 			// if self.block_db.blocks_validated == 91842 {
 			// 	println!("{}", diff.added.values().collect::<Vec<_>>()[0].to_json());
 			// 	println!("{}", self.utxos[diff.added.keys().collect::<Vec<_>>()[0]].to_json());

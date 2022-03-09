@@ -316,6 +316,7 @@ impl Tx {
 		}
 
 		let mut available = 0;
+		let count = self.inputs.len();
 		for (i, input) in self.inputs.iter().enumerate() {
 			let id = input.utxo_id();
 			if !utxos.contains(&id) {
@@ -333,6 +334,8 @@ impl Tx {
 				log_info!("scripts failed (block height {}):", utxos.block_height());
 				return false;
 			}
+
+			log_info!("    validated input {}/{}", i, count);
 		}
 
 		for (i, output) in self.outputs.iter().cloned().enumerate() {
