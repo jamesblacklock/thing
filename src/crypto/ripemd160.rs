@@ -495,8 +495,7 @@ fn ripemd160() {
 	assert!(compute_ripemd160("abc".as_bytes()).digest == [0x8eb208f7, 0xe05d987a, 0x9b044a8e, 0x98c6b087, 0xf15a0bfc]);
 	assert!(compute_ripemd160("message digest".as_bytes()).digest == [0x5d0689ef, 0x49d2fae5, 0x72b881b1, 0x23a85ffa, 0x21595f36]);
 	assert!(compute_ripemd160("abcdefghijklmnopqrstuvwxyz".as_bytes()).digest == [0xf71c2710, 0x9c692c1b, 0x56bbdceb, 0x5b9d2865, 0xb3708dbc]);
-	// println!("{:x?}", compute_ripemd160("abcdbcdefghijklmnopq".as_bytes()).digest);
-	assert!(compute_ripemd160("abcdbcdefghijklmnopq".as_bytes()).digest == [0x12a05338, 0x4a9c0c88, 0xe405a06c, 0x27dcf49a, 0xda62eb2b]);
+	assert!(compute_ripemd160("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq".as_bytes()).digest == [0x12a05338, 0x4a9c0c88, 0xe405a06c, 0x27dcf49a, 0xda62eb2b]);
 	assert!(compute_ripemd160("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".as_bytes()).digest == [0xb0e20b6e, 0x31166402, 0x86ed3a87, 0xa5713079, 0xb21f5189]);
 	assert!(compute_ripemd160("12345678901234567890123456789012345678901234567890123456789012345678901234567890".as_bytes()).digest == [0x9b752e45, 0x573d4b39, 0xf4dbd332, 0x3cab82bf, 0x63326bfb]);
 }
