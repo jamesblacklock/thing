@@ -5,7 +5,7 @@ pub const WARN: u32 = 1;
 pub const ERROR: u32 = 0;
 
 pub fn log_level() -> u32 {
-    match std::env::var("LOG_LEVEL").unwrap_or("ERROR".to_owned()).as_str() {
+    match std::env::var("LOG_LEVEL").unwrap_or("INFO".to_owned()).as_str() {
         "TRACE" => TRACE,
         "DEBUG" => DEBUG,
         "INFO"  => INFO,
