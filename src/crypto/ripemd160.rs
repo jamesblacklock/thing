@@ -1,6 +1,6 @@
 // rol(x, n) cyclically rotates x over n bits to the left
 fn rol(x: u32, n: u32) -> u32 {
-	assert!(0 <= n && n < 32);
+	assert!(n < 32);
 	(x << n) | (x >> (32 - n))
 }
 
@@ -71,103 +71,6 @@ fn jjj(mut a: u32, b: u32, mut c: u32, d: u32, e: u32, x: u32, s: u32) -> (u32, 
 	c = rol(c, 10);
 	(a, c)
 }
-
-unsafe fn bytes_to_dword(bytes: &[u8], i: usize) -> u32 {
-	let cast: &[u32] = std::slice::from_raw_parts(std::mem::transmute(&bytes[0]), usize::MAX);
-	u32::from_le_bytes(cast[i].to_ne_bytes())
-}
-
-// const T: [[u32; 4]; 3] = [
-// 	[0x6a08c71c, 0x22fa6a04, 0x8fe83a35, 0xebac3d3d],
-// 	[0x7102fae3, 0x851d490e, 0x34cc5111, 0x418d71e4],
-// 	[0x57759893, 0x02817bc0, 0x492959ba, 0x378f63eb],
-// ];
-
-// // calculates T0, T1, T2 required for ripemd160
-// // this only needs to be done once
-// fn mdmac_const_t() -> [[u32; 4]; 3] {
-// 	let mut t: [[u32; 4]; 3] = [[0; 4]; 3];
-
-// 	let mut mdbuf = [0; 5];
-// 	let mut u = "00abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-// 		.as_bytes().iter().copied().collect::<Vec<_>>();
-// 	let k: [u32; 9] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0, 0, 0, 0, 0];
-// 	let mut x: [u32; 16] = [0; 16];
-
-// 	for i in 0..3usize {
-// 		u[0] = 0x30 + i as u8;
-// 		u[1] = u[0];
-// 		mdmac_init(&k, &mut mdbuf);
-// 		for j in 0..16 {
-// 			x[j] = unsafe { bytes_to_dword(u.as_slice(), j) };
-// 		}
-// 		compress(&k, &mut mdbuf, &x);
-// 		t[i][0] = mdbuf[0];
-// 		t[i][1] = mdbuf[1];
-// 		t[i][2] = mdbuf[2];
-// 		t[i][3] = mdbuf[3];
-// 	}
-
-// 	return t
-// }
-
-// // expands 128-bit key into (5+4+4)*32-bit K required for ripemd160
-// fn mdmac_setup(key: [u8; 16]) -> [u32; 14] {
-// 	let t = mdmac_const_t();
-// 	let mut u = [0; 16];
-// 	let kk = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0, 0, 0, 0, 0];
-// 	let mut k = [0; 14];
-
-// 	mdmac_init(&kk, &mut k[0..5]);
-// 	for i in 0..4 {
-// 	  u[i]    = unsafe { bytes_to_dword(&key, i) };
-// 	  u[i+4]  = t[0][i];
-// 	  u[i+8]  = t[1][i];
-// 	  u[i+12] = t[2][i];
-// 	}
-// 	compress(&kk, &mut k[0..5], &u);
-// 	for i in 0..4 {
-// 	  u[i]    = t[0][i];
-// 	  u[i+4]  = t[1][i];
-// 	  u[i+8]  = t[2][i];
-// 	  u[i+12] = unsafe { bytes_to_dword(&key, i) };
-// 	}
-// 	compress(&kk, &mut k[0..5], &u);
-
-// 	mdmac_init(&kk, &mut k[5..10]);
-// 	for i in 0..4 {
-// 	  u[i]    = unsafe { bytes_to_dword(&key, i) };
-// 	  u[i+4]  = t[1][i];
-// 	  u[i+8]  = t[2][i];
-// 	  u[i+12] = t[0][i];
-// 	}
-// 	compress(&kk, &mut k[5..10], &u);
-// 	for i in 0..4 {
-// 	  u[i]    = t[1][i];
-// 	  u[i+4]  = t[2][i];
-// 	  u[i+8]  = t[0][i];
-// 	  u[i+12] = unsafe { bytes_to_dword(&key, i) };
-// 	}
-// 	compress(&kk, &mut k[5..10], &u);
-
-// 	mdmac_init(&kk, &mut k[9..14]);
-// 	for i in 0..4 {
-// 	  u[i]    = unsafe { bytes_to_dword(&key, i) };
-// 	  u[i+4]  = t[2][i];
-// 	  u[i+8]  = t[0][i];
-// 	  u[i+12] = t[1][i];
-// 	}
-// 	compress(&kk, &mut k[9..14], &u);
-// 	for i in 0..4 {
-// 	  u[i]    = t[2][i];
-// 	  u[i+4]  = t[0][i];
-// 	  u[i+8]  = t[1][i];
-// 	  u[i+12] = unsafe { bytes_to_dword(&key, i) };
-// 	}
-// 	compress(&kk, &mut k[9..14], &u);
-
-// 	return k;
-// }
 
 const MD_CONST: [u32; 5] = [0x67452301,	0xefcdab89,	0x98badcfe,	0x10325476,	0xc3d2e1f0];
 

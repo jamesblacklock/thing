@@ -1,7 +1,6 @@
 use std::{
 	iter::Iterator,
 	fmt,
-	io::Read,
 };
 
 use crate::{

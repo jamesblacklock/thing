@@ -291,7 +291,7 @@ impl Deserialize for ECDSASig {
 			return Err(Err::ValueError("invalid signature".to_owned()));
 		}
 		let total_size = read_u8(stream)?;
-		if total_size < 68 || total_size > 70 {
+		if total_size > 70 {
 			return Err(Err::ValueError("invalid signature".to_owned()));
 		}
 		let r = read_der_32_byte_int(stream)?;
