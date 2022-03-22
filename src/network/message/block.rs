@@ -161,20 +161,20 @@ impl Block {
 		
 		let mut state = UTXOState::new(utxos, block_height);
 		let count = self.txs.len();
-		log_info!("  validating {} txs...", count);
+		log_trace!("  validating {} txs...", count);
 		for (i, tx) in self.txs.iter().enumerate().skip(1) {
 			if tx.validate(&mut state, false) == false {
 				return ValidationResult::Invalid;
 			}
 
-			log_info!("  validated tx {}/{}", i, count);
+			log_trace!("  validated tx {}/{}", i, count);
 		}
 
 		if self.txs[0].validate(&mut state, true) == false {
 			return ValidationResult::Invalid;
 		}
 
-		log_info!("  validated coinbase tx");
+		log_trace!("  validated coinbase tx");
 		ValidationResult::Valid(state.diff())
 	}
 }

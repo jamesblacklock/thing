@@ -523,7 +523,7 @@ impl Node {
 		if let ValidationResult::Valid(diff) = block.validate(&mut self.utxos, self.block_db.blocks_validated) {
 			let hash = block.header.compute_hash();
 			self.block_db.store_block(block)?;
-			log_info!("validated block {:010}: {}", self.block_db.blocks_validated, hash);
+			log_trace!("validated block {:010}: {}", self.block_db.blocks_validated, hash);
 
 			if common::now() - self.last_save_time > 120 {
 				self.save_state();
