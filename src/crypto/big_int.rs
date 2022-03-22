@@ -72,6 +72,17 @@ impl <const W: usize> BigInt<W> {
 		(count, 0.into())
 	}
 
+	pub fn fast_rem(self, modulo: Self) -> Self {
+		let result = if self >= modulo {
+			self - modulo
+		} else {
+			self
+		};
+
+		assert!(result < modulo);
+		result
+	}
+
 	pub fn overflowing_add(self, other: Self) -> (Self, bool) {
 		let mut result = Self::default();
 		let mut last_carry = 0;
@@ -247,7 +258,8 @@ impl <const W: usize> std::ops::Div for BigInt<W> {
 impl <const W: usize> std::ops::Rem for BigInt<W> {
 	type Output = Self;
 	fn rem(self, other: Self) -> Self {
-		self.div_with_remainder(other).1
+		self.fast_rem(other)
+		// self.div_with_remainder(other).1
 	}
 }
 

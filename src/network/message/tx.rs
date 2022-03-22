@@ -331,7 +331,7 @@ impl Tx {
 				.and_then(|_| runtime.execute(&utxo.lock))
 				.and_then(|_| runtime.finalize());
 			if result.unwrap_or(StackObject::Empty).is_falsey() {
-				log_info!("scripts failed (block height {}):", utxos.block_height());
+				log_info!("scripts failed (block height {})", utxos.block_height());
 				return false;
 			}
 

@@ -799,7 +799,7 @@ impl <'a> Op<'a> {
 
 	fn do_check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
 		let pub_key = Op::do_pop_stack(runtime)?.to_ecdsa_pubkey()?;
-		let (sig, hash_type)     = Op::do_pop_stack(runtime)?.to_ecdsa_sig()?;
+		let (sig, hash_type) = Op::do_pop_stack(runtime)?.to_ecdsa_sig()?;
 		
 		// TODO: deal with all that OP_CODESEPARATOR bullshit and stuff (cf. https://en.bitcoin.it/wiki/OP_CHECKSIG)
 		let subscript = runtime.lock;

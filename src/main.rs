@@ -525,8 +525,7 @@ impl Node {
 			self.block_db.store_block(block)?;
 			log_info!("validated block {:010}: {}", self.block_db.blocks_validated, hash);
 
-			let now = common::now();
-			if now - self.last_save_time > 120 {
+			if common::now() - self.last_save_time > 120 {
 				self.save_state();
 				log_info!("saved state.");
 			}

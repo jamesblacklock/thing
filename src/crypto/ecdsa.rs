@@ -44,7 +44,7 @@ impl ECDSAPoint {
 
 	pub fn tangent(&self, a: u256, p: u256) -> u256 {
 		match self {
-			ECDSAPoint::Infinity       => panic!("point at infinity has no tangent"),
+			&ECDSAPoint::Infinity       => panic!("point at infinity has no tangent"),
 			&ECDSAPoint::Coord { x, y } => {
 				// s = 3x² + a / 2y
 				let numerator = x.mul_mod(x, p).mul_mod(3.into(), p).add_mod(a, p);
@@ -56,7 +56,7 @@ impl ECDSAPoint {
 
 	fn double(&self, a: u256, p: u256) -> ECDSAPoint {
 		match self {
-			ECDSAPoint::Infinity        => self.clone(),
+			&ECDSAPoint::Infinity       => self.clone(),
 			&ECDSAPoint::Coord { x, y } => {
 				let tangent = self.tangent(a, p);
 				let new_x = tangent.mul_mod(tangent, p).sub_mod(x, p).sub_mod(x, p);
@@ -84,8 +84,8 @@ impl ECDSAPoint {
 					let new_x = slope.mul_mod(slope, prime).sub_mod(px, prime).sub_mod(qx, prime);
 					let new_y = slope.mul_mod(px.sub_mod(new_x, prime), prime).sub_mod(py, prime);
 					ECDSAPoint::Coord {
-						x: new_x.resize(),
-						y: new_y.resize(),
+						x: new_x,
+						y: new_y,
 					}
 				}
 			},
