@@ -26,7 +26,7 @@ use super::{
 	TxOutput,
 };
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub struct UTXOID(pub Sha256, pub u32);
 
 pub struct UTXOState<'a> {
@@ -99,7 +99,13 @@ impl UTXODiff {
 		}
 		for (k, v) in self.added {
 			// println!("added UTXO: {:?}", k);
-			assert!(utxos.insert(k, v).is_none());
+			let replaced = utxos.insert(k.clone(), v);
+			if !replaced.is_none() {
+				// TODO: implement BIP 30 & BIP 34
+				log_warn!("UTXO with duplicate ID added to UTXO set!");
+				log_warn!("(this is known to have happened only twice and should not happen again)");
+				log_warn!("UTXO: {:?}", k);
+			}
 		}
 	}
 }
