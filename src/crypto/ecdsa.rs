@@ -29,7 +29,7 @@ pub enum ECDSAPoint {
 
 #[cfg(feature = "use-libsecp256k1")]
 pub fn libsecp256k1_verify(pubkey: &[u8], sig: &[u8], hash: &Sha256) -> bool {
-	let mut s = secp256k1::ecdsa::Signature::from_der(sig).unwrap();
+	let mut s = secp256k1::ecdsa::Signature::from_der_lax(sig).unwrap();
 	s.normalize_s();
 	let pk = &secp256k1::PublicKey::from_slice(pubkey).unwrap();
 	let result = secp256k1::SECP256K1.verify_ecdsa(
