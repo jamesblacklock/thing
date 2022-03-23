@@ -657,8 +657,8 @@ impl <'a> Op<'a> {
 			Op::CODESEPARATOR       => Ok(()),
 			Op::CHECKSIG            => Op::do_check_sig(runtime),
 			Op::CHECKSIGVERIFY      => Op::do_check_sig(runtime).and_then(|_| Op::do_verify(runtime, "OP_CHECKSIGVERIFY")),
-			Op::CHECKMULTISIG       => unimplemented!(),
-			Op::CHECKMULTISIGVERIFY => unimplemented!(),
+			Op::CHECKMULTISIG       => Op::do_check_multisig(runtime),
+			Op::CHECKMULTISIGVERIFY => Op::do_check_multisig(runtime).and_then(|_| Op::do_verify(runtime, "OP_CHECKSIGVERIFY")),
 			Op::NOP1                => Ok(()),
 			Op::CHECKLOCKTIMEVERIFY => unimplemented!(),
 			Op::CHECKSEQUENCEVERIFY => unimplemented!(),
@@ -797,22 +797,20 @@ impl <'a> Op<'a> {
 	}
 
 	fn do_check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
-		let pub_key = Op::do_pop_stack(runtime)?;
-		let sig = Op::do_pop_stack(runtime)?;
-
 		#[cfg(not(feature = "use-libsecp256k1"))]
-		let pub_key = pub_key.to_ecdsa_pubkey()?;
-		#[cfg(not(feature = "use-libsecp256k1"))]
-		let (sig, hash_type) = sig.to_ecdsa_sig()?;
-		
+		let (pub_key, sig, hash_type) = {
+			let pub_key = Op::do_pop_stack(runtime)?.to_ecdsa_pubkey()?;
+			let (sig, hash_type) = Op::do_pop_stack(runtime)?.to_ecdsa_sig()?;
+			(pub_key, sig, hash_type)
+		};
 		#[cfg(feature = "use-libsecp256k1")]
-		let pub_key = pub_key.to_vec();
-		#[cfg(feature = "use-libsecp256k1")]
-		let sig = sig.to_vec();
-		#[cfg(feature = "use-libsecp256k1")]
-		let hash_type = *sig.last().unwrap();
-		#[cfg(feature = "use-libsecp256k1")]
-		let sig = &sig[0..sig.len()-1];
+		let (pub_key, sig, hash_type) = {
+			let pub_key = Op::do_pop_stack(runtime)?.to_vec();
+			let sig = Op::do_pop_stack(runtime)?.to_vec();
+			let hash_type = *sig.last().unwrap();
+			let sig = sig[0..sig.len()-1].to_vec();
+			(pub_key, sig, hash_type)
+		};
 
 		// TODO: deal with all that OP_CODESEPARATOR bullshit and stuff (cf. https://en.bitcoin.it/wiki/OP_CHECKSIG)
 		let subscript = runtime.lock;
@@ -847,13 +845,17 @@ impl <'a> Op<'a> {
 		#[cfg(not(feature = "use-libsecp256k1"))]
 		let verify = || pub_key.verify(&sig, &hash);
 		#[cfg(feature = "use-libsecp256k1")]
-		let verify = || crate::crypto::ecdsa::libsecp256k1_verify(&*pub_key, sig, &hash);
+		let verify = || crate::crypto::ecdsa::libsecp256k1_verify(&*pub_key, &*sig, &hash);
 
 		if verify() {
 			Op::do_push_stack(runtime, StackObject::Int(1))
 		} else {
 			Op::do_push_stack(runtime, StackObject::Empty)
 		}
+	}
+
+	fn do_check_multisig(runtime: &mut ScriptRuntime) -> Result<()> {
+		unimplemented!();
 	}
 }
 

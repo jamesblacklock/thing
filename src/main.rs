@@ -602,6 +602,10 @@ impl Node {
 			
 			let result: Result<()> = try {
 				match *tok {
+					["help"] => {
+						println!("list of commands:");
+						println!("    exit\n    save\n    mempool\n    db\n    header <ID>\n    block <ID>\n    tx <ID>\n    utxos");
+					},
 					["exit"] => {
 						send_cmd.send(ApplicationMessage::Shutdown).or(Err(Err::ChannelError))?;
 						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
