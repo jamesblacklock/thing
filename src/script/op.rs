@@ -796,54 +796,24 @@ impl <'a> Op<'a> {
 		Op::do_push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
 	}
 
-	#[cfg(not(feature = "use-libsecp256k1"))]
 	fn do_check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
-		let pub_key = Op::do_pop_stack(runtime)?.to_ecdsa_pubkey()?;
-		let (sig, hash_type) = Op::do_pop_stack(runtime)?.to_ecdsa_sig()?;
+		let pub_key = Op::do_pop_stack(runtime)?;
+		let sig = Op::do_pop_stack(runtime)?;
+
+		#[cfg(not(feature = "use-libsecp256k1"))]
+		let pub_key = pub_key.to_ecdsa_pubkey()?;
+		#[cfg(not(feature = "use-libsecp256k1"))]
+		let (sig, hash_type) = sig.to_ecdsa_sig()?;
 		
-		// TODO: deal with all that OP_CODESEPARATOR bullshit and stuff (cf. https://en.bitcoin.it/wiki/OP_CHECKSIG)
-		let subscript = runtime.lock;
-
-		let mut tx_copy = runtime.tx.clone();
-		for (i, input) in tx_copy.inputs.iter_mut().enumerate() {
-			if i == runtime.index {
-				input.unlock = subscript.clone();
-			} else {
-				input.unlock = Script::new();
-			}
-		}
-
-		if hash_type & 0x1f == 0x02 { // SIGHASH_NONE
-			unimplemented!();
-		} else if hash_type & 0x1f == 0x03 { // SIGHASH_SINGLE
-			unimplemented!();
-		}
-		if hash_type & 0x80 != 0 { // SIGHASH_ANYONECANPAY
-			unimplemented!();
-		}
-
-		let serialized: crate::err::Result<_> = try {
-			let mut serialized = Vec::new();
-			tx_copy.serialize(&mut serialized)?;
-			write_u32(&mut serialized, hash_type as u32)?;
-			serialized
-		};
-
-		let hash = sha256::compute_double_sha256(&*serialized?);
-		if pub_key.verify(&sig, &hash) {
-			Op::do_push_stack(runtime, StackObject::Int(1))
-		} else {
-			Op::do_push_stack(runtime, StackObject::Empty)
-		}
-	}
-
-	#[cfg(feature = "use-libsecp256k1")]
-	fn do_check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
-		let pub_key = Op::do_pop_stack(runtime)?.to_vec();
-		let sig = Op::do_pop_stack(runtime)?.to_vec();
+		#[cfg(feature = "use-libsecp256k1")]
+		let pub_key = pub_key.to_vec();
+		#[cfg(feature = "use-libsecp256k1")]
+		let sig = sig.to_vec();
+		#[cfg(feature = "use-libsecp256k1")]
 		let hash_type = *sig.last().unwrap();
+		#[cfg(feature = "use-libsecp256k1")]
 		let sig = &sig[0..sig.len()-1];
-		
+
 		// TODO: deal with all that OP_CODESEPARATOR bullshit and stuff (cf. https://en.bitcoin.it/wiki/OP_CHECKSIG)
 		let subscript = runtime.lock;
 
@@ -873,10 +843,15 @@ impl <'a> Op<'a> {
 		};
 
 		let hash = sha256::compute_double_sha256(&*serialized?);
-		if crate::crypto::ecdsa::libsecp256k1_verify(&*pub_key, sig, &hash) {
+		
+		#[cfg(not(feature = "use-libsecp256k1"))]
+		let verify = || pub_key.verify(&sig, &hash);
+		#[cfg(feature = "use-libsecp256k1")]
+		let verify = || crate::crypto::ecdsa::libsecp256k1_verify(&*pub_key, sig, &hash);
+
+		if verify() {
 			Op::do_push_stack(runtime, StackObject::Int(1))
 		} else {
-			println!();
 			Op::do_push_stack(runtime, StackObject::Empty)
 		}
 	}
