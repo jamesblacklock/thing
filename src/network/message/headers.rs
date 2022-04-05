@@ -1,11 +1,13 @@
 use std::{
 	io::{Read, Write},
+	cell::Cell,
 };
 
 use crate::{
 	err::*,
 	json::*,
 	crypto::sha256::*,
+	crypto::big_int::u256,
 };
 
 use crate::common::{
@@ -33,16 +35,49 @@ pub struct Header {
 	pub bits: u32,
 	pub nonce: u32,
 	pub tx_count: usize,
+	hash: Cell<Option<Sha256>>,
 }
 
-impl Header {pub fn tx_count(&self) -> usize {
+impl Header {
+	pub fn new(
+		version: i32,
+		prev_block: Sha256,
+		merkle_root: Sha256,
+		timestamp: u32,
+		bits: u32,
+		nonce: u32,
+		tx_count: usize) -> Self {
+		Header {
+			version,
+			prev_block,
+			merkle_root,
+			timestamp,
+			bits,
+			nonce,
+			tx_count,
+			hash: Cell::new(None),
+		}
+	}
+	
+	pub fn tx_count(&self) -> usize {
 		self.tx_count
 	}
 
 	pub fn compute_hash(&self) -> Sha256 {
+		if let Some(hash) = self.hash.get() {
+			return hash;
+		}
 		let mut buf = Vec::new();
 		self.serialize_without_tx_count(&mut buf).unwrap();
-		compute_double_sha256(&*buf)
+		let hash = compute_double_sha256(&*buf);
+		self.hash.set(Some(hash));
+		hash
+	}
+
+	pub fn compute_target(&self) -> u256 {
+		let base = (self.bits & 0x00_ff_ff_ff) as u64;
+		let exp = (((self.bits >> 24) - 3) * 8) as u64;
+		u256::from_u64(base) << exp
 	}
 
 	fn serialize_without_tx_count(&self, stream: &mut dyn Write) -> Result<()> {
@@ -86,6 +121,7 @@ impl Deserialize for Header {
 			bits,
 			nonce,
 			tx_count,
+			hash: Cell::new(None),
 		})
 	}
 }

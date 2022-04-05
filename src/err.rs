@@ -4,6 +4,7 @@ pub enum Err {
     NetworkError(String),
     ValueError(String),
     ScriptError(String),
+    ConsensusError(String),
     ChannelError,
 }
 
@@ -22,6 +23,7 @@ impl std::fmt::Display for Err {
             Err::NetworkError(message) => write!(f, "{}", message),
             Err::ValueError(message) => write!(f, "{}", message),
             Err::ScriptError(message) => write!(f, "{}", message),
+            Err::ConsensusError(message) => write!(f, "{}", message),
             Err::ChannelError => write!(f, "channel closed unexpectedly"),
         }
     }

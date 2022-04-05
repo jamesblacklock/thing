@@ -20,7 +20,10 @@ mod network;
 mod script;
 mod crypto;
 
-use crypto::sha256::Sha256;
+use crypto::{
+	sha256::Sha256,
+	big_int::u256,
+};
 
 use network::{
 	Peer,
@@ -253,6 +256,7 @@ struct Node {
 	block_db: BlocksDB,
 	utxos: HashMap<UTXOID, TxOutput>,
 	last_save_time: u64,
+	target: u256,
 }
 
 impl Node {
@@ -310,6 +314,10 @@ impl Node {
 
 		log_debug!("{} peers conntected.", peers.len());
 		
+		let block_db = BlocksDB::load();
+		let last_hash = block_db.hashes.last().unwrap();
+		let target = block_db.headers.get(last_hash).unwrap().compute_target();
+
 		Node {
 			peers,
 			recv,
@@ -317,6 +325,7 @@ impl Node {
 			block_db: BlocksDB::load(),
 			utxos: Node::load_utxos(),
 			last_save_time: common::now(),
+			target,
 		}
 	}
 
@@ -490,10 +499,23 @@ impl Node {
 			let last = *self.block_db.hashes.last().unwrap();
 			if header.prev_block == last {
 				let hash = header.compute_hash();
+				let target = header.compute_target();
+				if target != self.target {
+					return Err(Err::ConsensusError(
+						format!("received invalid header (wrong target: expected {:x}, found {:x})", self.target, target)));
+				} else if hash.to_u256() >= self.target {
+					return Err(Err::ConsensusError(
+						format!("received invalid header (hash exceeded target: {:x} >= {:x})", hash.to_u256(), self.target)));
+				}
+				
 				self.block_db.headers.insert(hash, header);
 				self.block_db.hashes.push(hash);
+
+				if self.block_db.hashes.len() % 2016 == 0 {
+					self.adjust_difficulty();
+				}
 			} else {
-				unimplemented!();
+				return Err(Err::ConsensusError(format!("received invalid header (prev_block does not match expected)")));
 			}
 		}
 
@@ -520,8 +542,9 @@ impl Node {
 	}
 
 	fn handle_block_message(&mut self, _peer_index: usize, block: Block) -> Result<()> {
-		if let ValidationResult::Valid(diff) = block.validate(&mut self.utxos, self.block_db.blocks_validated) {
-			let hash = block.header.compute_hash();
+		let height = self.block_db.blocks_validated;
+		let hash = &self.block_db.hashes[height];
+		if let ValidationResult::Valid(diff) = block.validate(hash, &mut self.utxos, height) {
 			self.block_db.store_block(block)?;
 			log_trace!("validated block {:010}: {}", self.block_db.blocks_validated, hash);
 
@@ -570,6 +593,50 @@ impl Node {
 	fn handle_tx_message(&mut self, _peer_index: usize, id: Sha256, tx: Tx) -> Result<()> {
 		self.mempool.add_tx(id, tx);
 		Ok(())
+	}
+
+	fn adjust_difficulty(&mut self) {
+		assert!(self.block_db.hashes.len() % 2016 == 0);
+
+		let height = self.block_db.hashes.len();
+		
+		let hash_start   = &self.block_db.hashes[height - 2016];
+		let hash_end     = &self.block_db.hashes[height - 1];
+
+		let period_start = self.block_db.headers.get(hash_start).unwrap().timestamp;
+		let period_end   = self.block_db.headers.get(hash_end).unwrap().timestamp;
+		
+		let expected_duration = 2016.0 * 10.0 * 60.0;
+		let actual_duration   = (period_end - period_start) as f64;
+
+		let ratio = (actual_duration / expected_duration).clamp(0.25, 4.0);
+		self.target = u256::from_f64(self.target.to_f64() * ratio);
+		let max_target = u256::hex("ffff0000000000000000000000000000000000000000000000000000");
+		if self.target > max_target {
+			self.target = max_target;
+		}
+
+		let mut i = 0;
+		for &b in self.target.as_bytes().iter().rev() {
+			if b != 0 {
+				assert!(i > 0);
+				if b >= 0x80 {
+					i -= 1;
+				}
+				break;
+			}
+			i += 1;
+		}
+
+		let trunc = (29 - i) * 8;
+
+		
+		// println!("new: {:x}", self.target);
+		// println!("trunc: {}", trunc);
+		
+		self.target = self.target >> trunc << trunc;
+		// println!("{:x}", self.target);
+		// println!("average time per block: {} minutes", (period_end - period_start) as f64 / 2016.0 / 60.0);
 	}
 
 	fn show_object<T, F>(id: String, f: F)

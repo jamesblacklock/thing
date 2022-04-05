@@ -163,7 +163,7 @@ impl ECDSAPubKey {
 	#[must_use]
 	pub fn verify(&self, sig: &ECDSASig, hash: &Sha256) -> bool {
 		// adapted from https://github.com/tlsfuzzer/python-ecdsa/blob/master/src/ecdsa/ecdsa.py (public domain)
-		let hash = hash.to_u256();
+		let hash = hash.to_u256_be();
 		let g = ECDSA_BASE;
 		let n = ECDSA_ORDER;
 		let r = sig.r;

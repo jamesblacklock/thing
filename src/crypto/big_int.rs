@@ -183,6 +183,37 @@ impl <const W: usize> BigInt<W> {
 		write!(f, "{}", chars.iter().collect::<String>())
 	}
 
+	pub fn to_f64(&self) -> f64 {
+		let mut a = 0.0;
+		for b in (0..(W*64)).rev() {
+			a *= 2.0;
+			if self.bit(b) {
+				a += 1.0;
+			}
+		}
+		a
+	}
+
+	pub fn from_f64(n: f64) -> Self {
+		assert!(n.is_finite() && n >= 0.0);
+
+		let bits = n.to_bits();
+		let mut exp: i16 = ((bits >> 52) & 0x7ff) as i16;
+		let mantissa = if exp == 0 {
+			(bits & 0xfffffffffffff) << 1
+		} else {
+			(bits & 0xfffffffffffff) | 0x10000000000000
+		};
+		exp -= 1023 + 52;
+
+		if exp < 0 {
+			Self::from_u64(mantissa) >> i16::abs(exp) as u64
+		} else {
+			Self::from_u64(mantissa) << exp as u64
+		}
+	}
+
+
 	pub fn from_u64(n: u64) -> Self {
 		let mut result = BigInt([0; W]);
 		result.0[0] = n;
@@ -212,6 +243,10 @@ impl <const W: usize> BigInt<W> {
 			acc = acc * 10.into() + n.into()
 		}
 		acc
+	}
+
+	pub fn as_bytes<'a>(&'a self) -> &'a[u8] {
+		unsafe { std::slice::from_raw_parts(std::mem::transmute(&self.0[0]), W * 8)}
 	}
 }
 

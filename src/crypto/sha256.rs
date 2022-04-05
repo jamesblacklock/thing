@@ -25,8 +25,13 @@ impl Sha256 {
 		unsafe { std::slice::from_raw_parts(std::mem::transmute(&self.digest[0]), 32)}
 	}
 
-	pub fn to_u256(&self) -> super::big_int::u256 {
+	pub fn to_u256_be(&self) -> super::big_int::u256 {
 		let b: [u8;32] = (&*self.as_bytes().iter().copied().rev().collect::<Vec<_>>()).try_into().unwrap();
+		super::big_int::u256::from_raw_le(unsafe { std::mem::transmute(b) })
+	}
+
+	pub fn to_u256(&self) -> super::big_int::u256 {
+		let b: [u8;32] = self.as_bytes().try_into().unwrap();
 		super::big_int::u256::from_raw_le(unsafe { std::mem::transmute(b) })
 	}
 }

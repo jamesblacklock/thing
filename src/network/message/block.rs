@@ -137,15 +137,15 @@ impl Block {
 		let merkle_root = tx.compute_hash();
 
 		let block = Block {
-			header: Header {
-				version: 1,
-				prev_block: Sha256::default(),
+			header: Header::new(
+				1,
+				Sha256::default(),
 				merkle_root,
-				timestamp: 1231006505,
-				bits: 0x1d00ffff,
-				nonce: 2083236893,
-				tx_count: 1,
-			},
+				1231006505,
+				0x1d00ffff,
+				2083236893,
+				1,
+			),
 			txs: vec![tx],
 		};
 
@@ -160,7 +160,11 @@ impl Block {
 	}
 
 	#[must_use]
-	pub fn validate(&self, utxos: &mut HashMap<UTXOID, TxOutput>, block_height: usize) -> ValidationResult {
+	pub fn validate(&self, hash: &Sha256, utxos: &mut HashMap<UTXOID, TxOutput>, block_height: usize) -> ValidationResult {
+		if *hash != self.header.compute_hash() {
+			return ValidationResult::Invalid;
+		}
+
 		if Tx::check_merkle_root(&self.txs, self.header.merkle_root) == false {
 			return ValidationResult::Invalid;
 		}
