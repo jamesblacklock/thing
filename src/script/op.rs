@@ -1196,7 +1196,10 @@ impl <'a> Op<'a> {
 				// return Ok(sha256::ONE);
 			}
 			tx_copy.outputs.truncate(runtime.index + 1);
-			for output in tx_copy.outputs.iter_mut() {
+			for (i, output) in tx_copy.outputs.iter_mut().enumerate() {
+				if i == runtime.index {
+					continue;
+				}
 				output.value = -1i64 as u64;
 				output.lock = Script::new();
 			}
