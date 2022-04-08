@@ -1385,29 +1385,6 @@ impl <'a> fmt::Display for Op<'a> {
 	}
 }
 
-// #[derive(Debug)]
-// pub enum HashType {
-// 	SigHashAll = 0x01,
-// 	SigHashNone = 0x02,
-// 	SigHashSingle = 0x03,
-// 	SigHashAnyoneCanPay = 0x80,
-// }
-
-// impl TryFrom<u8> for HashType {
-// 	type Error = Err;
-// 	fn try_from(n: u8) -> Result<Self> {
-// 		match n {
-// 			0x01 => Ok(HashType::SigHashAll),
-// 			0x02 => Ok(HashType::SigHashNone),
-// 			0x03 => Ok(HashType::SigHashSingle),
-// 			0x80 => Ok(HashType::SigHashAnyoneCanPay),
-// 			_ => Err(Err::ValueError("invalid hash type".to_owned()))
-// 		}
-// 	}
-// }
-
-
-
 // verify the famous "pizza transaction"
 // as illustrated here:
 // https://bitcoin.stackexchange.com/questions/32305/how-does-the-ecdsa-verification-algorithm-work-during-transaction
