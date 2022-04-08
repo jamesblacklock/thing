@@ -1209,19 +1209,18 @@ impl <'a> Op<'a> {
 		}
 
 		if sighash_anyonecanpay {
-			tx_copy.inputs = vec![tx_copy.inputs[runtime.index].clone()];
-			log_warn!(
-				"encountered SIGHASH_ANYONECANPAY; this is untested! (block {}, input {})",
-				runtime.state.height(), runtime.index);
-		}
-
-		for (i, input) in tx_copy.inputs.iter_mut().enumerate() {
-			if i == runtime.index {
-				input.unlock = runtime.get_subscript();
-			} else {
-				input.unlock = Script::new();
-				if sighash_none || sighash_single {
-					input.sequence = 0;
+			let mut input = tx_copy.inputs[runtime.index].clone();
+			input.unlock = runtime.get_subscript();
+			tx_copy.inputs = vec![input];
+		} else {
+			for (i, input) in tx_copy.inputs.iter_mut().enumerate() {
+				if i == runtime.index {
+					input.unlock = runtime.get_subscript();
+				} else {
+					input.unlock = Script::new();
+					if sighash_none || sighash_single {
+						input.sequence = 0;
+					}
 				}
 			}
 		}

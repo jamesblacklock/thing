@@ -617,7 +617,7 @@ impl Node {
 			self.block_db.store_block(block)?;
 			log_trace!("validated block {:010}: {}", self.block_db.blocks_validated, hash);
 
-			if common::now() - self.last_save_time > 120 {
+			if common::now() - self.last_save_time > 600 {
 				self.save_state();
 				log_info!("saved state.");
 			}
@@ -740,7 +740,9 @@ impl Node {
 				match *tok {
 					["help"] => {
 						println!("list of commands:");
-						println!("    exit\n    save\n    mempool\n    db\n    header <ID>\n    block <ID>\n    tx <ID>\n    utxos");
+						println!("    exit\n    save\n    mempool\n    db");
+						println!("    header <ID>\n    block <ID>\n    tx <ID>");
+						println!("    utxos\n    count db\n    count mempool");
 					},
 					["exit"] => {
 						send_cmd.send(ApplicationMessage::Shutdown).or(Err(Err::ChannelError))?;
