@@ -128,6 +128,10 @@ impl <'a> ScriptIterator<'a> {
 		self.offset += size;
 		slice
 	}
+
+	pub fn with_offset(self) -> ScriptIteratorWithOffset<'a> {
+		ScriptIteratorWithOffset(self)
+	}
 }
 
 impl <'a> Iterator for ScriptIterator<'a> {
@@ -138,6 +142,21 @@ impl <'a> Iterator for ScriptIterator<'a> {
 			return None
 		}
 		Some(Op::next(self))
+	}
+}
+
+pub struct ScriptIteratorWithOffset<'a>(ScriptIterator<'a>);
+
+impl <'a> Iterator for ScriptIteratorWithOffset<'a> {
+	type Item = (usize, Op<'a>);
+
+	fn next(&mut self) -> Option<(usize, Op<'a>)> {
+		let offset = self.0.offset;
+		if let Some(op) = self.0.next() {
+			Some((offset, op))
+		} else {
+			None
+		}
 	}
 }
 
@@ -215,11 +234,13 @@ pub struct ScriptRuntime<'a> {
 	index: usize,
 	script: Option<&'a Script>,
 	stack: Vec<StackObject>,
+	alt_stack: Vec<StackObject>,
 	invalid: bool,
 	depth: u32,
 	skip_depth: u32,
 	state: &'a State,
 	code_sep: usize,
+	offset: usize,
 }
 
 impl <'a> ScriptRuntime<'a> {
@@ -229,11 +250,13 @@ impl <'a> ScriptRuntime<'a> {
 			index,
 			script: None,
 			stack: Vec::new(),
+			alt_stack: Vec::new(),
 			invalid: false,
 			skip_depth: 0,
 			depth: 0,
 			state,
 			code_sep: 0,
+			offset: 0,
 		}
 	}
 
@@ -242,7 +265,7 @@ impl <'a> ScriptRuntime<'a> {
 		let mut sub = Script::new();
 		for op in self.script.unwrap().ops_from(self.code_sep) {
 			match op {
-				Op::CODESEPARATOR(_) => {
+				Op::CODESEPARATOR => {
 					sub.0.clear();
 				},
 				_ => {
@@ -260,7 +283,8 @@ impl <'a> ScriptRuntime<'a> {
 		}
 		self.script = Some(script);
 		self.code_sep = 0;
-		for op in script.ops() {
+		for (offset, op) in script.ops().with_offset() {
+			self.offset = offset;
 			op.affect(self)?;
 		}
 		Ok(())

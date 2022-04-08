@@ -222,7 +222,7 @@ pub enum Op<'a> {
 	SHA256,
 	HASH160,
 	HASH256,
-	CODESEPARATOR(usize),
+	CODESEPARATOR,
 	CHECKSIG,
 	CHECKSIGVERIFY,
 	CHECKMULTISIG,
@@ -386,7 +386,7 @@ impl <'a> Op<'a> {
 			Op::SHA256              => v.push(OP_SHA256),
 			Op::HASH160             => v.push(OP_HASH160),
 			Op::HASH256             => v.push(OP_HASH256),
-			Op::CODESEPARATOR(_)    => v.push(OP_CODESEPARATOR),
+			Op::CODESEPARATOR       => v.push(OP_CODESEPARATOR),
 			Op::CHECKSIG            => v.push(OP_CHECKSIG),
 			Op::CHECKSIGVERIFY      => v.push(OP_CHECKSIGVERIFY),
 			Op::CHECKMULTISIG       => v.push(OP_CHECKMULTISIG),
@@ -514,7 +514,7 @@ impl <'a> Op<'a> {
 			OP_SHA256              => Op::SHA256,
 			OP_HASH160             => Op::HASH160,
 			OP_HASH256             => Op::HASH256,
-			OP_CODESEPARATOR       => Op::CODESEPARATOR(it.offset),
+			OP_CODESEPARATOR       => Op::CODESEPARATOR,
 			OP_CHECKSIG            => Op::CHECKSIG,
 			OP_CHECKSIGVERIFY      => Op::CHECKSIGVERIFY,
 			OP_CHECKMULTISIG       => Op::CHECKMULTISIG,
@@ -607,27 +607,27 @@ impl <'a> Op<'a> {
 			Op::ELSE                => Op::do_else(runtime),
 			Op::ENDIF               => Op::do_end_if(runtime),
 			Op::VERIFY              => Op::do_verify(runtime, "OP_VERIFY"),
-			Op::RETURN              => unimplemented!(),
-			Op::TOALTSTACK          => unimplemented!(),
-			Op::FROMALTSTACK        => unimplemented!(),
+			Op::RETURN              => Op::do_return(runtime),
+			Op::TOALTSTACK          => Op::do_to_alt_stack(runtime),
+			Op::FROMALTSTACK        => Op::do_from_alt_stack(runtime),
 			Op::OP_2DROP            => Op::do_drop(runtime, 2),
 			Op::OP_2DUP             => Op::do_dup(runtime, 2),
 			Op::OP_3DUP             => Op::do_dup(runtime, 3),
-			Op::OP_2OVER            => unimplemented!(),
-			Op::OP_2ROT             => unimplemented!(),
-			Op::OP_2SWAP            => unimplemented!(),
-			Op::IFDUP               => unimplemented!(),
-			Op::DEPTH               => Op::do_push_stack(runtime, StackObject::Int(runtime.stack.len() as i64)),
+			Op::OP_2OVER            => Op::do_over2(runtime),
+			Op::OP_2ROT             => Op::do_rot2(runtime),
+			Op::OP_2SWAP            => Op::do_swap2(runtime),
+			Op::IFDUP               => Op::do_ifdup(runtime),
+			Op::DEPTH               => Op::do_depth(runtime),
 			Op::DROP                => Op::do_drop(runtime, 1),
 			Op::DUP                 => Op::do_dup(runtime, 1),
-			Op::NIP                 => unimplemented!(),
-			Op::OVER                => unimplemented!(),
-			Op::PICK                => unimplemented!(),
-			Op::ROLL                => unimplemented!(),
-			Op::ROT                 => unimplemented!(),
-			Op::SWAP                => unimplemented!(),
-			Op::TUCK                => unimplemented!(),
-			Op::SIZE                => unimplemented!(),
+			Op::NIP                 => Op::do_nip(runtime),
+			Op::OVER                => Op::do_over(runtime),
+			Op::PICK                => Op::do_pick(runtime),
+			Op::ROLL                => Op::do_roll(runtime),
+			Op::ROT                 => Op::do_rot(runtime),
+			Op::SWAP                => Op::do_swap(runtime),
+			Op::TUCK                => Op::do_tuck(runtime),
+			Op::SIZE                => Op::do_size(runtime),
 			Op::EQUAL               => Op::do_equal(runtime),
 			Op::EQUALVERIFY         => Op::do_equal_verify(runtime),
 			Op::RESERVED1           => Op::do_reserved("OP_RESERVED1"),
@@ -651,13 +651,13 @@ impl <'a> Op<'a> {
 			Op::LESSTHANOREQUAL     => Op::do_num_le(runtime),
 			Op::MIN                 => Op::do_num_min(runtime),
 			Op::MAX                 => Op::do_num_max(runtime),
-			Op::WITHIN              => unimplemented!(),
+			Op::WITHIN              => Op::do_num_within(runtime),
 			Op::RIPEMD160           => Op::do_ripemd160(runtime),
 			Op::SHA1                => unimplemented!(),
 			Op::SHA256              => Op::do_sha256(runtime),
 			Op::HASH160             => Op::do_hash160(runtime),
 			Op::HASH256             => Op::do_hash256(runtime),
-			Op::CODESEPARATOR(n)    => Op::do_code_separator(runtime, *n),
+			Op::CODESEPARATOR       => Op::do_code_separator(runtime),
 			Op::CHECKSIG            => Op::do_check_sig(runtime),
 			Op::CHECKSIGVERIFY      => Op::do_check_sig_verify(runtime),
 			Op::CHECKMULTISIG       => Op::do_check_multisig(runtime),
@@ -685,16 +685,16 @@ impl <'a> Op<'a> {
 	}
 
 	fn do_push_num(runtime: &mut ScriptRuntime, n: i64) -> Result<()> {
-		Op::do_push_stack(runtime, StackObject::Int(n))
+		Op::push_stack(runtime, StackObject::Int(n))
 	}
 
 	fn do_push_bytes(runtime: &mut ScriptRuntime, b: Vec<u8>) -> Result<()> {
-		Op::do_push_stack(runtime, StackObject::Bytes(b))
+		Op::push_stack(runtime, StackObject::Bytes(b))
 	}
 
 	fn do_drop(runtime: &mut ScriptRuntime, count: usize) -> Result<()> {
 		for _ in 0..count {
-			Op::do_pop_stack(runtime).and(Ok(()))?;
+			Op::pop_stack(runtime).and(Ok(()))?;
 		}
 		Ok(())
 	}
@@ -715,23 +715,23 @@ impl <'a> Op<'a> {
 		Op::do_num_eq(runtime).and_then(|_| Op::do_verify(runtime, "OP_NUMEQUALERIFY"))
 	}
 
-	fn do_code_separator(runtime: &mut ScriptRuntime, n: usize) -> Result<()> {
-		runtime.code_sep = n;
+	fn do_code_separator(runtime: &mut ScriptRuntime) -> Result<()> {
+		runtime.code_sep = runtime.offset;
 		Ok(())
 	}
 
 	fn do_equal(runtime: &mut ScriptRuntime) -> Result<()> {
-		let i = Op::do_pop_stack(runtime)?;
-		let j = Op::do_pop_stack(runtime)?;
+		let i = Op::pop_stack(runtime)?;
+		let j = Op::pop_stack(runtime)?;
 		if i == j {
-			Op::do_push_stack(runtime, StackObject::Int(1))
+			Op::push_stack(runtime, StackObject::Int(1))
 		} else {
-			Op::do_push_stack(runtime, StackObject::Empty)
+			Op::push_stack(runtime, StackObject::Empty)
 		}
 	}
 
 	fn do_verify(runtime: &mut ScriptRuntime, opcode: &str) -> Result<()> {
-		let value = Op::do_pop_stack(runtime)?;
+		let value = Op::pop_stack(runtime)?;
 		if value.is_falsey() {
 			return Err(Err::ScriptError(format!("{}: verification failed", opcode)))
 		}
@@ -752,7 +752,7 @@ impl <'a> Op<'a> {
 			return Ok(());
 		}
 
-		let value = Op::do_pop_stack(runtime)?;
+		let value = Op::pop_stack(runtime)?;
 		if value.is_truthy() == expected_truthiness {
 			runtime.depth = 1;
 		} else {
@@ -790,6 +790,14 @@ impl <'a> Op<'a> {
 		Ok(())
 	}
 
+	fn do_return(runtime: &mut ScriptRuntime) -> Result<()> {
+		// an OP_RETURN isn't really an "error", so that's why I do this here rather than return an error
+		// TODO: do not store UTXOs in the UTXO set if their locking scripts contain a RETURN
+		// Also TODO: consider other heuristics that make a UTXO provably unspendable
+		runtime.invalid = true;
+		Ok(())
+	}
+
 	fn do_reserved(opcode: &str) -> Result<()> {
 		Err(Err::ScriptError(format!("script contains reserved opcode: {}", opcode)))
 	}
@@ -802,160 +810,274 @@ impl <'a> Op<'a> {
 		Err(Err::ScriptError(format!("script contains invalid opcode: {}", opcode)))
 	}
 
-	fn do_push_stack(runtime: &mut ScriptRuntime, item: StackObject) -> Result<()> {
-		runtime.stack.push(item);
-		Ok(())
+	fn do_over(runtime: &mut ScriptRuntime) -> Result<()> {
+		Op::check_stack(runtime, 2)?;
+		Op::push_stack(runtime, runtime.stack[runtime.stack.len() - 2].clone())
 	}
 
-	pub fn do_pop_stack(runtime: &mut ScriptRuntime) -> Result<StackObject> {
-		runtime.stack.pop().ok_or(Err::ScriptError("tried to pop empty stack".to_owned()))
+	fn do_rot(runtime: &mut ScriptRuntime) -> Result<()> {
+		let x3 = Op::pop_stack(runtime)?;
+		let x2 = Op::pop_stack(runtime)?;
+		let x1 = Op::pop_stack(runtime)?;
+		Op::push_stack(runtime, x2)?;
+		Op::push_stack(runtime, x3)?;
+		Op::push_stack(runtime, x1)
+	}
+
+	fn do_swap(runtime: &mut ScriptRuntime) -> Result<()> {
+		let x2 = Op::pop_stack(runtime)?;
+		let x1 = Op::pop_stack(runtime)?;
+		Op::push_stack(runtime, x2)?;
+		Op::push_stack(runtime, x1)
+	}
+
+	fn do_over2(runtime: &mut ScriptRuntime) -> Result<()> {
+		Op::check_stack(runtime, 4)?;
+		Op::push_stack(runtime, runtime.stack[runtime.stack.len() - 4].clone())?;
+		Op::push_stack(runtime, runtime.stack[runtime.stack.len() - 3].clone())
+	}
+
+	fn do_rot2(runtime: &mut ScriptRuntime) -> Result<()> {
+		let x6 = Op::pop_stack(runtime)?;
+		let x5 = Op::pop_stack(runtime)?;
+		let x4 = Op::pop_stack(runtime)?;
+		let x3 = Op::pop_stack(runtime)?;
+		let x2 = Op::pop_stack(runtime)?;
+		let x1 = Op::pop_stack(runtime)?;
+		Op::push_stack(runtime, x3)?;
+		Op::push_stack(runtime, x4)?;
+		Op::push_stack(runtime, x5)?;
+		Op::push_stack(runtime, x6)?;
+		Op::push_stack(runtime, x1)?;
+		Op::push_stack(runtime, x2)
+	}
+
+	fn do_swap2(runtime: &mut ScriptRuntime) -> Result<()> {
+		let x4 = Op::pop_stack(runtime)?;
+		let x3 = Op::pop_stack(runtime)?;
+		let x2 = Op::pop_stack(runtime)?;
+		let x1 = Op::pop_stack(runtime)?;
+		Op::push_stack(runtime, x3)?;
+		Op::push_stack(runtime, x4)?;
+		Op::push_stack(runtime, x1)?;
+		Op::push_stack(runtime, x2)
+	}
+
+	fn do_ifdup(runtime: &mut ScriptRuntime) -> Result<()> {
+		if let Some(item) = runtime.stack.last() {
+			if item.is_truthy() {
+				Op::do_dup(runtime, 1)?;
+			}
+			Ok(())
+		} else {
+			Err(Err::ScriptError("too few items on the stack".to_owned()))
+		}
+	}
+
+	fn do_depth(runtime: &mut ScriptRuntime) -> Result<()> {
+		Op::push_stack(runtime, StackObject::Int(runtime.stack.len() as i64))
+	}
+
+	fn do_nip(runtime: &mut ScriptRuntime) -> Result<()> {
+		let item = Op::pop_stack(runtime)?;
+		Op::pop_stack(runtime)?;
+		Op::push_stack(runtime, item)
+	}
+
+	fn do_pick(runtime: &mut ScriptRuntime) -> Result<()> {
+		let n = Op::pop_stack_index(runtime)?;
+		let item = runtime.stack[n].clone();
+		Op::push_stack(runtime, item)
+	}
+
+	fn do_roll(runtime: &mut ScriptRuntime) -> Result<()> {
+		let n = Op::pop_stack_index(runtime)?;
+		let item = runtime.stack[n].clone();
+		for i in n..runtime.stack.len()-1 {
+			runtime.stack[i] = runtime.stack[i + 1].clone();
+		}
+		Op::push_stack(runtime, item)
+	}
+
+	fn do_tuck(runtime: &mut ScriptRuntime) -> Result<()> {
+		let x2 = Op::pop_stack(runtime)?;
+		let x1 = Op::pop_stack(runtime)?;
+		Op::push_stack(runtime, x2.clone())?;
+		Op::push_stack(runtime, x1)?;
+		Op::push_stack(runtime, x2)
+	}
+
+	fn do_size(runtime: &mut ScriptRuntime) -> Result<()> {
+		let len = if let Some(item) = runtime.stack.last() {
+			item.to_vec().len()
+		} else {
+			return Err(Err::ScriptError("too few items on the stack".to_owned()))
+		};
+		Op::do_push_num(runtime, len as i64)
+	}
+
+	fn do_to_alt_stack(runtime: &mut ScriptRuntime) -> Result<()> {
+		let item = Op::pop_stack(runtime)?;
+		Op::push_alt_stack(runtime, item)
+	}
+
+	fn do_from_alt_stack(runtime: &mut ScriptRuntime) -> Result<()> {
+		let item = Op::pop_alt_stack(runtime)?;
+		Op::push_stack(runtime, item)
 	}
 
 	fn do_dup(runtime: &mut ScriptRuntime, count: usize) -> Result<()> {
 		assert!(count > 0);
 		if runtime.stack.len() < count {
-			return Err(Err::ScriptError("tried to DUP with too few items on the stack".to_owned()))
+			return Err(Err::ScriptError("too few items on the stack".to_owned()))
 		}
 
 		let offset = runtime.stack.len() - count;
 		for i in offset..runtime.stack.len() {
 			let item = runtime.stack[i].clone();
-			Op::do_push_stack(runtime, item)?;
+			Op::push_stack(runtime, item)?;
 		}
 		Ok(())
 	}
 
 	fn do_num_eq(runtime: &mut ScriptRuntime) -> Result<()> {
-		let r = Op::do_pop_stack(runtime)?.to_i64();
-		let l = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int((l == r) as i64))
+		let r = Op::pop_stack(runtime)?.to_i64();
+		let l = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int((l == r) as i64))
 	}
 
 	fn do_num_ne(runtime: &mut ScriptRuntime) -> Result<()> {
-		let r = Op::do_pop_stack(runtime)?.to_i64();
-		let l = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int((l != r) as i64))
+		let r = Op::pop_stack(runtime)?.to_i64();
+		let l = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int((l != r) as i64))
 	}
 
 	fn do_num_lt(runtime: &mut ScriptRuntime) -> Result<()> {
-		let r = Op::do_pop_stack(runtime)?.to_i64();
-		let l = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int((l < r) as i64))
+		let r = Op::pop_stack(runtime)?.to_i64();
+		let l = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int((l < r) as i64))
 	}
 
 	fn do_num_gt(runtime: &mut ScriptRuntime) -> Result<()> {
-		let r = Op::do_pop_stack(runtime)?.to_i64();
-		let l = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int((l > r) as i64))
+		let r = Op::pop_stack(runtime)?.to_i64();
+		let l = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int((l > r) as i64))
 	}
 
 	fn do_num_ge(runtime: &mut ScriptRuntime) -> Result<()> {
-		let r = Op::do_pop_stack(runtime)?.to_i64();
-		let l = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int((l >= r) as i64))
+		let r = Op::pop_stack(runtime)?.to_i64();
+		let l = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int((l >= r) as i64))
 	}
 
 	fn do_num_le(runtime: &mut ScriptRuntime) -> Result<()> {
-		let r = Op::do_pop_stack(runtime)?.to_i64();
-		let l = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int((l <= r) as i64))
+		let r = Op::pop_stack(runtime)?.to_i64();
+		let l = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int((l <= r) as i64))
 	}
 
 	fn do_num_min(runtime: &mut ScriptRuntime) -> Result<()> {
-		let r = Op::do_pop_stack(runtime)?.to_i64();
-		let l = Op::do_pop_stack(runtime)?.to_i64();
+		let r = Op::pop_stack(runtime)?.to_i64();
+		let l = Op::pop_stack(runtime)?.to_i64();
 		let min = std::cmp::min(l, r);
-		Op::do_push_stack(runtime, StackObject::Int(min))
+		Op::push_stack(runtime, StackObject::Int(min))
 	}
 
 	fn do_num_max(runtime: &mut ScriptRuntime) -> Result<()> {
-		let r = Op::do_pop_stack(runtime)?.to_i64();
-		let l = Op::do_pop_stack(runtime)?.to_i64();
+		let r = Op::pop_stack(runtime)?.to_i64();
+		let l = Op::pop_stack(runtime)?.to_i64();
 		let max = std::cmp::max(l, r);
-		Op::do_push_stack(runtime, StackObject::Int(max))
+		Op::push_stack(runtime, StackObject::Int(max))
+	}
+
+	fn do_num_within(runtime: &mut ScriptRuntime) -> Result<()> {
+		let max = Op::pop_stack(runtime)?.to_i64();
+		let min = Op::pop_stack(runtime)?.to_i64();
+		let n = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int((min <= n && n < max) as i64))
 	}
 
 	fn do_num_add(runtime: &mut ScriptRuntime) -> Result<()> {
-		let r = Op::do_pop_stack(runtime)?.to_i64();
-		let l = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int(l + r))
+		let r = Op::pop_stack(runtime)?.to_i64();
+		let l = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int(l + r))
 	}
 
 	fn do_num_sub(runtime: &mut ScriptRuntime) -> Result<()> {
-		let r = Op::do_pop_stack(runtime)?.to_i64();
-		let l = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int(l - r))
+		let r = Op::pop_stack(runtime)?.to_i64();
+		let l = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int(l - r))
 	}
 
 	fn do_num_booland(runtime: &mut ScriptRuntime) -> Result<()> {
-		let r = Op::do_pop_stack(runtime)?.to_i64();
-		let l = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int((l != 0 && r != 0) as i64))
+		let r = Op::pop_stack(runtime)?.to_i64();
+		let l = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int((l != 0 && r != 0) as i64))
 	}
 
 	fn do_num_boolor(runtime: &mut ScriptRuntime) -> Result<()> {
-		let r = Op::do_pop_stack(runtime)?.to_i64();
-		let l = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int((l != 0 || r != 0) as i64))
+		let r = Op::pop_stack(runtime)?.to_i64();
+		let l = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int((l != 0 || r != 0) as i64))
 	}
 
 	fn do_num_add1(runtime: &mut ScriptRuntime) -> Result<()> {
-		let n = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int(n + 1))
+		let n = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int(n + 1))
 	}
 
 	fn do_num_sub1(runtime: &mut ScriptRuntime) -> Result<()> {
-		let n = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int(n - 1))
+		let n = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int(n - 1))
 	}
 
 	fn do_num_neg(runtime: &mut ScriptRuntime) -> Result<()> {
-		let n = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int(-n))
+		let n = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int(-n))
 	}
 
 	fn do_num_abs(runtime: &mut ScriptRuntime) -> Result<()> {
-		let n = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int(n.abs()))
+		let n = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int(n.abs()))
 	}
 
 	fn do_num_not(runtime: &mut ScriptRuntime) -> Result<()> {
-		let n = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int((n != 0) as i64))
+		let n = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int((n != 0) as i64))
 	}
 
 	fn do_num_neq0(runtime: &mut ScriptRuntime) -> Result<()> {
-		let n = Op::do_pop_stack(runtime)?.to_i64();
-		Op::do_push_stack(runtime, StackObject::Int((n != 0) as i64))
+		let n = Op::pop_stack(runtime)?.to_i64();
+		Op::push_stack(runtime, StackObject::Int((n != 0) as i64))
 	}
 
 	fn do_ripemd160(runtime: &mut ScriptRuntime) -> Result<()> {
-		let item = Op::do_pop_stack(runtime)?;
+		let item = Op::pop_stack(runtime)?;
 		let hash = ripemd160::compute_ripemd160(&*item.to_vec());
-		Op::do_push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
+		Op::push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
 	}
 
 	fn do_sha256(runtime: &mut ScriptRuntime) -> Result<()> {
-		let item = Op::do_pop_stack(runtime)?;
+		let item = Op::pop_stack(runtime)?;
 		let hash = sha256::compute_sha256(&*item.to_vec());
-		Op::do_push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
+		Op::push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
 	}
 
 	fn do_hash160(runtime: &mut ScriptRuntime) -> Result<()> {
-		let item = Op::do_pop_stack(runtime)?;
+		let item = Op::pop_stack(runtime)?;
 		let hash = ripemd160::compute_ripemd160(sha256::compute_sha256(&*item.to_vec()).as_bytes());
-		Op::do_push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
+		Op::push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
 	}
 
 	fn do_hash256(runtime: &mut ScriptRuntime) -> Result<()> {
-		let item = Op::do_pop_stack(runtime)?;
+		let item = Op::pop_stack(runtime)?;
 		let hash = sha256::compute_double_sha256(&*item.to_vec());
-		Op::do_push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
+		Op::push_stack(runtime, StackObject::Bytes(hash.as_bytes().to_vec()))
 	}
 
 	fn do_check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
-		let pubkey_item = Op::do_pop_stack(runtime)?;
-		let sig_item = Op::do_pop_stack(runtime)?;
+		let pubkey_item = Op::pop_stack(runtime)?;
+		let sig_item = Op::pop_stack(runtime)?;
 		
 		let pubkey = pubkey_item.to_vec();
 		let sig = sig_item.to_vec();
@@ -965,32 +1087,32 @@ impl <'a> Op<'a> {
 		let hash = Op::build_sig_hash(runtime, hash_type)?;
 
 		if ecdsa::verify(&*pubkey, sig, &hash).is_ok() {
-			Op::do_push_stack(runtime, StackObject::Int(1))
+			Op::push_stack(runtime, StackObject::Int(1))
 		} else {
-			Op::do_push_stack(runtime, StackObject::Empty)
+			Op::push_stack(runtime, StackObject::Empty)
 		}
 	}
 
 	fn do_check_multisig(runtime: &mut ScriptRuntime) -> Result<()> {
 		// collect pub keys
-		let n_pub = Op::do_pop_stack(runtime)?;
+		let n_pub = Op::pop_stack(runtime)?;
 		let mut pubkeys = Vec::new();
 		for _ in 0..n_pub.to_i64() {
-			pubkeys.push(Op::do_pop_stack(runtime)?.to_vec());
+			pubkeys.push(Op::pop_stack(runtime)?.to_vec());
 		}
 
 		// collect sigs
-		let n_sig = Op::do_pop_stack(runtime)?;
+		let n_sig = Op::pop_stack(runtime)?;
 		let mut sigs = Vec::new();
 		for _ in 0..n_sig.to_i64() {
-			let sig = Op::do_pop_stack(runtime)?.to_vec();
+			let sig = Op::pop_stack(runtime)?.to_vec();
 			let hash_type = *sig.last().unwrap();
 			let sig = sig[0..sig.len()-1].to_vec();
 			sigs.push((sig, hash_type));
 		}
 
 		// dummy value
-		Op::do_pop_stack(runtime)?;
+		Op::pop_stack(runtime)?;
 
 		let mut last_hash_type = None;
 		let mut hash = Sha256::default();
@@ -1012,11 +1134,11 @@ impl <'a> Op<'a> {
 			};
 
 			if result == false {
-				return Op::do_push_stack(runtime, StackObject::Empty);
+				return Op::push_stack(runtime, StackObject::Empty);
 			}
 		}
 
-		Op::do_push_stack(runtime, StackObject::Int(1))
+		Op::push_stack(runtime, StackObject::Int(1))
 	}
 
 	fn do_check_lock_time_verify(runtime: &mut ScriptRuntime) -> Result<()> {
@@ -1082,6 +1204,36 @@ impl <'a> Op<'a> {
 		};
 
 		Ok(sha256::compute_double_sha256(&*serialized?))
+	}
+
+	fn push_stack(runtime: &mut ScriptRuntime, item: StackObject) -> Result<()> {
+		runtime.stack.push(item);
+		Ok(())
+	}
+
+	fn pop_stack(runtime: &mut ScriptRuntime) -> Result<StackObject> {
+		runtime.stack.pop().ok_or(Err::ScriptError("tried to pop empty stack".to_owned()))
+	}
+
+	fn push_alt_stack(runtime: &mut ScriptRuntime, item: StackObject) -> Result<()> {
+		runtime.alt_stack.push(item);
+		Ok(())
+	}
+
+	fn pop_alt_stack(runtime: &mut ScriptRuntime) -> Result<StackObject> {
+		runtime.stack.pop().ok_or(Err::ScriptError("tried to pop empty alt-stack".to_owned()))
+	}
+
+	fn check_stack(runtime: &mut ScriptRuntime, n: usize) -> Result<()> {
+		if n > runtime.stack.len() {
+			return Err(Err::ScriptError("too few items on the stack".to_owned()))
+		}
+		Ok(())
+	}
+	
+	fn pop_stack_index(runtime: &mut ScriptRuntime) -> Result<usize> {
+		let n = Op::pop_stack(runtime)?.to_i64() as usize;
+		Op::check_stack(runtime, n + 1).and(Ok(runtime.stack.len() - 1 - n))
 	}
 }
 
@@ -1186,7 +1338,7 @@ impl <'a> fmt::Display for Op<'a> {
 			Op::SHA256              => write!(f, "OP_SHA256"),
 			Op::HASH160             => write!(f, "OP_HASH160"),
 			Op::HASH256             => write!(f, "OP_HASH256"),
-			Op::CODESEPARATOR(_)    => write!(f, "OP_CODESEPARATOR"),
+			Op::CODESEPARATOR       => write!(f, "OP_CODESEPARATOR"),
 			Op::CHECKSIG            => write!(f, "OP_CHECKSIG"),
 			Op::CHECKSIGVERIFY      => write!(f, "OP_CHECKSIGVERIFY"),
 			Op::CHECKMULTISIG       => write!(f, "OP_CHECKMULTISIG"),
