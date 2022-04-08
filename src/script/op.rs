@@ -847,7 +847,7 @@ impl <'a> Op<'a> {
 		Op::push_stack(runtime, x3)?;
 		Op::push_stack(runtime, x4)?;
 		Op::push_stack(runtime, x5)?;
-		Op::push_stack(runtime, x6)?;
+		Op::push_stack(runtime, x6)?; 
 		Op::push_stack(runtime, x1)?;
 		Op::push_stack(runtime, x2)
 	}
@@ -1178,22 +1178,49 @@ impl <'a> Op<'a> {
 	}
 
 	fn build_sig_hash(runtime: &mut ScriptRuntime, hash_type: u8) -> Result<Sha256> {
+		const SIGHASH_NONE         : u8 = 0x02;
+		const SIGHASH_SINGLE       : u8 = 0x03;
+		const SIGHASH_ANYONECANPAY : u8 = 0x80;
+
+		let sighash_none = hash_type & 0x1f == SIGHASH_NONE;
+		let sighash_single = hash_type & 0x1f == SIGHASH_SINGLE;
+		let sighash_anyonecanpay = hash_type & SIGHASH_ANYONECANPAY != 0;
+
 		let mut tx_copy = runtime.tx.clone();
+		
+		if sighash_none {
+			tx_copy.outputs = Vec::new();
+		} else if sighash_single {
+			if runtime.index >= tx_copy.outputs.len() {
+				unimplemented!();
+				// return Ok(sha256::ONE);
+			}
+			tx_copy.outputs.truncate(runtime.index + 1);
+			for output in tx_copy.outputs.iter_mut() {
+				output.value = -1i64 as u64;
+				output.lock = Script::new();
+			}
+			log_warn!(
+				"encountered SIGHASH_SINGLE; this is untested! (block {}, input {})",
+				runtime.state.height(), runtime.index);
+		}
+
+		if sighash_anyonecanpay {
+			tx_copy.inputs = vec![tx_copy.inputs[runtime.index].clone()];
+			log_warn!(
+				"encountered SIGHASH_ANYONECANPAY; this is untested! (block {}, input {})",
+				runtime.state.height(), runtime.index);
+		}
+
 		for (i, input) in tx_copy.inputs.iter_mut().enumerate() {
 			if i == runtime.index {
 				input.unlock = runtime.get_subscript();
 			} else {
 				input.unlock = Script::new();
+				if sighash_none || sighash_single {
+					input.sequence = 0;
+				}
 			}
-		}
-
-		if hash_type & 0x1f == 0x02 { // SIGHASH_NONE
-			unimplemented!();
-		} else if hash_type & 0x1f == 0x03 { // SIGHASH_SINGLE
-			unimplemented!();
-		}
-		if hash_type & 0x80 != 0 { // SIGHASH_ANYONECANPAY
-			unimplemented!();
 		}
 
 		let serialized: crate::err::Result<_> = try {
@@ -1212,7 +1239,7 @@ impl <'a> Op<'a> {
 	}
 
 	fn pop_stack(runtime: &mut ScriptRuntime) -> Result<StackObject> {
-		runtime.stack.pop().ok_or(Err::ScriptError("tried to pop empty stack".to_owned()))
+		runtime.stack.pop().ok_or(Err::ScriptError("too few items on stack".to_owned()))
 	}
 
 	fn push_alt_stack(runtime: &mut ScriptRuntime, item: StackObject) -> Result<()> {
@@ -1221,7 +1248,7 @@ impl <'a> Op<'a> {
 	}
 
 	fn pop_alt_stack(runtime: &mut ScriptRuntime) -> Result<StackObject> {
-		runtime.stack.pop().ok_or(Err::ScriptError("tried to pop empty alt-stack".to_owned()))
+		runtime.stack.pop().ok_or(Err::ScriptError("too few items on alt-stack".to_owned()))
 	}
 
 	fn check_stack(runtime: &mut ScriptRuntime, n: usize) -> Result<()> {
