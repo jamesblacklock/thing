@@ -28,13 +28,23 @@ pub enum ECDSAPoint {
 }
 
 #[cfg(feature = "use-libsecp256k1")]
-pub fn libsecp256k1_verify(pubkey: &[u8], sig: &[u8], hash: &Sha256) -> bool {
+pub fn verify(pubkey: &[u8], sig: &[u8], hash: &Sha256) -> Result<()> {
 	let mut s = secp256k1::ecdsa::Signature::from_der_lax(sig).unwrap();
 	s.normalize_s();
 	let result = secp256k1::SECP256K1.verify_ecdsa(
 		&secp256k1::Message::from_slice(hash.as_bytes()).unwrap(),
 		&s, &secp256k1::PublicKey::from_slice(pubkey).unwrap());
-	result.is_ok()
+	result.map_err(|_| Err::ScriptError("invalid signature".to_owned()))
+}
+
+#[cfg(not(feature = "use-libsecp256k1"))]
+pub fn verify(pubkey: &[u8], sig: &[u8], hash: &Sha256) -> Result<()> {
+	let pubkey = ECDSAPubKey::deserialize(&mut &*pubkey)?;
+	let sig = ECDSASig::deserialize(&mut &*sig)?;
+	if pubkey.verify(&sig, &hash) == false {
+		return Err(Err::ScriptError("invalid signature".to_owned()));
+	}
+	Ok(())
 }
 
 impl ECDSAPoint {
@@ -490,7 +500,7 @@ fn mul_point_scalar() {
 }
 
 #[test]
-fn verify() {
+fn verify_sigs() {
 	let sigs = [
 		(
 			// ECDSAPubKey {

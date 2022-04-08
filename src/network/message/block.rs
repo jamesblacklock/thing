@@ -8,6 +8,7 @@ use std::{
 };
 
 use crate::{
+	State,
 	json::*,
 	network::{
 		Deserialize,
@@ -33,7 +34,6 @@ pub struct UTXOState<'a> {
 	base: &'a HashMap<UTXOID, TxOutput>,
 	added: HashMap<UTXOID, TxOutput>,
 	removed: HashSet<UTXOID>,
-	block_height: usize,
 	pub tx_fee: u64,
 }
 
@@ -49,18 +49,13 @@ pub enum ValidationResult {
 }
 
 impl <'a> UTXOState<'a> {
-	pub fn new(utxos: &'a HashMap<UTXOID, TxOutput>, block_height: usize) -> Self {
+	pub fn new(utxos: &'a HashMap<UTXOID, TxOutput>) -> Self {
 		UTXOState {
 			base: utxos,
 			added: HashMap::new(),
 			removed: HashSet::new(),
-			block_height,
 			tx_fee: 0,
 		}
-	}
-
-	pub fn block_height(&self) -> usize {
-		self.block_height
 	}
 	
 	pub fn contains(&self, id: &UTXOID) -> bool {
@@ -160,7 +155,7 @@ impl Block {
 	}
 
 	#[must_use]
-	pub fn validate(&self, hash: &Sha256, utxos: &mut HashMap<UTXOID, TxOutput>, block_height: usize) -> ValidationResult {
+	pub fn validate(&self, hash: &Sha256, utxos: &mut HashMap<UTXOID, TxOutput>, state: &State) -> ValidationResult {
 		if *hash != self.header.compute_hash() {
 			return ValidationResult::Invalid;
 		}
@@ -169,23 +164,23 @@ impl Block {
 			return ValidationResult::Invalid;
 		}
 		
-		let mut state = UTXOState::new(utxos, block_height);
+		let mut utxos = UTXOState::new(utxos);
 		let count = self.txs.len();
 		log_trace!("  validating {} txs...", count);
 		for (i, tx) in self.txs.iter().enumerate().skip(1) {
-			if tx.validate(&mut state, false) == false {
+			if tx.validate(&mut utxos, false, state) == false {
 				return ValidationResult::Invalid;
 			}
 
 			log_trace!("  validated tx {}/{}", i, count);
 		}
 
-		if self.txs[0].validate(&mut state, true) == false {
+		if self.txs[0].validate(&mut utxos, true, state) == false {
 			return ValidationResult::Invalid;
 		}
 
 		log_trace!("  validated coinbase tx");
-		ValidationResult::Valid(state.diff())
+		ValidationResult::Valid(utxos.diff())
 	}
 }
 

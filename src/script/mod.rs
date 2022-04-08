@@ -4,11 +4,9 @@ use std::{
 };
 
 use crate::{
-	crypto::ecdsa::*,
-	network::Deserialize,
+	State,
 	network::message::Tx,
 	err::*,
-	common::read_u8,
 };
 
 mod op;
@@ -30,6 +28,13 @@ impl Script {
 		ScriptIterator {
 			script: &self.0,
 			offset: 0,
+		}
+	}
+
+	fn ops_from(&self, offset: usize) -> ScriptIterator {
+		ScriptIterator {
+			script: &self.0,
+			offset,
 		}
 	}
 
@@ -168,34 +173,15 @@ impl StackObject {
 	}
 
 	pub fn is_truthy(&self) -> bool {
-		match *self {
+		match self {
 			StackObject::Empty => false,
-			StackObject::Int(n) => n != 0,
-			StackObject::Bytes(_) => true,
+			StackObject::Int(n) => *n != 0,
+			StackObject::Bytes(b) => b.len() > 0,
 		}
 	}
 
 	pub fn is_falsey(&self) -> bool {
 		!self.is_truthy()
-	}
-
-	pub fn to_ecdsa_pubkey(&self) -> Result<ECDSAPubKey> {
-		match self {
-			StackObject::Bytes(bytes) => ECDSAPubKey::deserialize(&mut bytes.as_slice()),
-			_ => Err(Err::ScriptError("could not convert stack object to ECDSA pubkey".to_owned()))
-		}
-	}
-
-	pub fn to_ecdsa_sig(&self) -> Result<(ECDSASig, u8)> {
-		match self {
-			StackObject::Bytes(bytes) => {
-				let stream = &mut bytes.as_slice();
-				let sig = ECDSASig::deserialize(stream)?;
-				let hash_type = read_u8(stream)?;
-				Ok((sig, hash_type))
-			},
-			_ => Err(Err::ScriptError("could not convert stack object to ECDSA sig".to_owned()))
-		}
 	}
 }
 
@@ -227,30 +213,53 @@ impl fmt::Debug for StackObject {
 pub struct ScriptRuntime<'a> {
 	tx: &'a Tx,
 	index: usize,
-	lock: &'a Script,
+	script: Option<&'a Script>,
 	stack: Vec<StackObject>,
 	invalid: bool,
 	depth: u32,
 	skip_depth: u32,
+	state: &'a State,
+	code_sep: usize,
 }
 
 impl <'a> ScriptRuntime<'a> {
-	pub fn new(tx: &'a Tx, index: usize, lock: &'a Script) -> Self {
+	pub fn new(tx: &'a Tx, index: usize, state: &'a State) -> Self {
 		ScriptRuntime {
 			tx,
 			index,
-			lock,
+			script: None,
 			stack: Vec::new(),
 			invalid: false,
 			skip_depth: 0,
 			depth: 0,
+			state,
+			code_sep: 0,
 		}
 	}
 
-	pub fn execute(&mut self, script: &Script) -> Result<()> {
+	pub fn get_subscript(&self) -> Script {
+		// TODO: ensure sig is not present in subscript (cf. https://en.bitcoin.it/wiki/OP_CHECKSIG)
+		let mut sub = Script::new();
+		for op in self.script.unwrap().ops_from(self.code_sep) {
+			match op {
+				Op::CODESEPARATOR(_) => {
+					sub.0.clear();
+				},
+				_ => {
+					sub.append(op);
+				},
+			}
+		}
+
+		sub
+	}
+
+	pub fn execute(&mut self, script: &'a Script) -> Result<()> {
 		if self.invalid {
 			return Err(Err::ScriptError("attempt to execute script previous state was already invalid".to_owned()));
 		}
+		self.script = Some(script);
+		self.code_sep = 0;
 		for op in script.ops() {
 			op.affect(self)?;
 		}

@@ -1,10 +1,13 @@
 use std::fmt;
 use super::*;
 use crate::{
-	network::Serialize,
+	network::{Serialize, Deserialize},
 	common::write_u32,
 	crypto::sha256,
+	crypto::sha256::Sha256,
 	crypto::ripemd160,
+	crypto::ecdsa,
+	network::message::AbsoluteLockTime,
 };
 
 const OP_0: u8                   = 0;
@@ -219,7 +222,7 @@ pub enum Op<'a> {
 	SHA256,
 	HASH160,
 	HASH256,
-	CODESEPARATOR,
+	CODESEPARATOR(usize),
 	CHECKSIG,
 	CHECKSIGVERIFY,
 	CHECKMULTISIG,
@@ -383,7 +386,7 @@ impl <'a> Op<'a> {
 			Op::SHA256              => v.push(OP_SHA256),
 			Op::HASH160             => v.push(OP_HASH160),
 			Op::HASH256             => v.push(OP_HASH256),
-			Op::CODESEPARATOR       => v.push(OP_CODESEPARATOR),
+			Op::CODESEPARATOR(_)    => v.push(OP_CODESEPARATOR),
 			Op::CHECKSIG            => v.push(OP_CHECKSIG),
 			Op::CHECKSIGVERIFY      => v.push(OP_CHECKSIGVERIFY),
 			Op::CHECKMULTISIG       => v.push(OP_CHECKMULTISIG),
@@ -511,7 +514,7 @@ impl <'a> Op<'a> {
 			OP_SHA256              => Op::SHA256,
 			OP_HASH160             => Op::HASH160,
 			OP_HASH256             => Op::HASH256,
-			OP_CODESEPARATOR       => Op::CODESEPARATOR,
+			OP_CODESEPARATOR       => Op::CODESEPARATOR(it.offset),
 			OP_CHECKSIG            => Op::CHECKSIG,
 			OP_CHECKSIGVERIFY      => Op::CHECKSIGVERIFY,
 			OP_CHECKMULTISIG       => Op::CHECKMULTISIG,
@@ -654,7 +657,7 @@ impl <'a> Op<'a> {
 			Op::SHA256              => Op::do_sha256(runtime),
 			Op::HASH160             => Op::do_hash160(runtime),
 			Op::HASH256             => Op::do_hash256(runtime),
-			Op::CODESEPARATOR       => Ok(()),
+			Op::CODESEPARATOR(n)    => Op::do_code_separator(runtime, *n),
 			Op::CHECKSIG            => Op::do_check_sig(runtime),
 			Op::CHECKSIGVERIFY      => Op::do_check_sig(runtime).and_then(|_| Op::do_verify(runtime, "OP_CHECKSIGVERIFY")),
 			Op::CHECKMULTISIG       => Op::do_check_multisig(runtime),
@@ -679,6 +682,11 @@ impl <'a> Op<'a> {
 		} else {
 			Ok(())
 		}
+	}
+
+	fn do_code_separator(runtime: &mut ScriptRuntime, n: usize) -> Result<()> {
+		runtime.code_sep = n;
+		Ok(())
 	}
 
 	fn do_equal(runtime: &mut ScriptRuntime) -> Result<()> {
@@ -797,28 +805,80 @@ impl <'a> Op<'a> {
 	}
 
 	fn do_check_sig(runtime: &mut ScriptRuntime) -> Result<()> {
-		#[cfg(not(feature = "use-libsecp256k1"))]
-		let (pub_key, sig, hash_type) = {
-			let pub_key = Op::do_pop_stack(runtime)?.to_ecdsa_pubkey()?;
-			let (sig, hash_type) = Op::do_pop_stack(runtime)?.to_ecdsa_sig()?;
-			(pub_key, sig, hash_type)
-		};
-		#[cfg(feature = "use-libsecp256k1")]
-		let (pub_key, sig, hash_type) = {
-			let pub_key = Op::do_pop_stack(runtime)?.to_vec();
+		let pubkey_item = Op::do_pop_stack(runtime)?;
+		let sig_item = Op::do_pop_stack(runtime)?;
+		
+		let pubkey = pubkey_item.to_vec();
+		let sig = sig_item.to_vec();
+		let hash_type = *sig.last().unwrap();
+		let sig = &sig[0..sig.len()-1];
+		
+		let hash = Op::build_sig_hash(runtime, hash_type)?;
+
+		if ecdsa::verify(&*pubkey, sig, &hash).is_ok() {
+			Op::do_push_stack(runtime, StackObject::Int(1))
+		} else {
+			Op::do_push_stack(runtime, StackObject::Empty)
+		}
+	}
+
+	fn do_check_multisig(runtime: &mut ScriptRuntime) -> Result<()> {
+		// collect pub keys
+		let n_pub = Op::do_pop_stack(runtime)?;
+		let mut pubkeys = Vec::new();
+		for _ in 0..n_pub.to_i64() {
+			pubkeys.push(Op::do_pop_stack(runtime)?.to_vec());
+		}
+
+		// collect sigs
+		let n_sig = Op::do_pop_stack(runtime)?;
+		let mut sigs = Vec::new();
+		for _ in 0..n_sig.to_i64() {
 			let sig = Op::do_pop_stack(runtime)?.to_vec();
 			let hash_type = *sig.last().unwrap();
 			let sig = sig[0..sig.len()-1].to_vec();
-			(pub_key, sig, hash_type)
+			sigs.push((sig, hash_type));
+		}
+
+		// dummy value
+		Op::do_pop_stack(runtime)?;
+
+		let mut last_hash_type = None;
+		let mut hash = Sha256::default();
+		
+		while let Some((sig, hash_type)) = sigs.pop() {
+			if last_hash_type != Some(hash_type) {
+				hash = Op::build_sig_hash(runtime, hash_type)?;
+				last_hash_type = Some(hash_type);
+			}
+
+			let result = loop {
+				if let Some(pubkey) = pubkeys.pop() {
+					if ecdsa::verify(&*pubkey, &*sig, &hash).is_ok() {
+						break true;
+					}
+				} else {
+					break false;
+				}
+			};
+
+			if result == false {
+				return Op::do_push_stack(runtime, StackObject::Empty);
+			}
+		}
+
+		Op::do_push_stack(runtime, StackObject::Int(1))
+	}
 		};
 
 		// TODO: deal with all that OP_CODESEPARATOR bullshit and stuff (cf. https://en.bitcoin.it/wiki/OP_CHECKSIG)
 		let subscript = runtime.lock;
 
+	fn build_sig_hash(runtime: &mut ScriptRuntime, hash_type: u8) -> Result<Sha256> {
 		let mut tx_copy = runtime.tx.clone();
 		for (i, input) in tx_copy.inputs.iter_mut().enumerate() {
 			if i == runtime.index {
-				input.unlock = subscript.clone();
+				input.unlock = runtime.get_subscript();
 			} else {
 				input.unlock = Script::new();
 			}
@@ -840,22 +900,7 @@ impl <'a> Op<'a> {
 			serialized
 		};
 
-		let hash = sha256::compute_double_sha256(&*serialized?);
-		
-		#[cfg(not(feature = "use-libsecp256k1"))]
-		let verify = || pub_key.verify(&sig, &hash);
-		#[cfg(feature = "use-libsecp256k1")]
-		let verify = || crate::crypto::ecdsa::libsecp256k1_verify(&*pub_key, &*sig, &hash);
-
-		if verify() {
-			Op::do_push_stack(runtime, StackObject::Int(1))
-		} else {
-			Op::do_push_stack(runtime, StackObject::Empty)
-		}
-	}
-
-	fn do_check_multisig(runtime: &mut ScriptRuntime) -> Result<()> {
-		unimplemented!();
+		Ok(sha256::compute_double_sha256(&*serialized?))
 	}
 }
 
@@ -960,7 +1005,7 @@ impl <'a> fmt::Display for Op<'a> {
 			Op::SHA256              => write!(f, "OP_SHA256"),
 			Op::HASH160             => write!(f, "OP_HASH160"),
 			Op::HASH256             => write!(f, "OP_HASH256"),
-			Op::CODESEPARATOR       => write!(f, "OP_CODESEPARATOR"),
+			Op::CODESEPARATOR(_)    => write!(f, "OP_CODESEPARATOR"),
 			Op::CHECKSIG            => write!(f, "OP_CHECKSIG"),
 			Op::CHECKSIGVERIFY      => write!(f, "OP_CHECKSIGVERIFY"),
 			Op::CHECKMULTISIG       => write!(f, "OP_CHECKMULTISIG"),
@@ -1058,8 +1103,8 @@ fn pizza() {
 #[test]
 fn branching_if() {
 	let tx = Tx::default();
-	let lock = Script::new();
-	let mut runtime = ScriptRuntime::new(&tx, 0, &lock);
+	let state = Default::default();
+	let mut runtime = ScriptRuntime::new(&tx, 0, &state);
 	let script = Script::builder()
 		.append(Op::data_u32(100))
 		.append(Op::IF)
@@ -1076,8 +1121,8 @@ fn branching_if() {
 #[test]
 fn branching_else() {
 	let tx = Tx::default();
-	let lock = Script::new();
-	let mut runtime = ScriptRuntime::new(&tx, 0, &lock);
+	let state = Default::default();
+	let mut runtime = ScriptRuntime::new(&tx, 0, &state);
 	let script = Script::builder()
 		.append(Op::OP_0)
 		.append(Op::IF)

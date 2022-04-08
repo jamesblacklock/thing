@@ -12,7 +12,7 @@ secp256k1 = { version = "0.22.1", features = ["global-context"], optional = true
 use-libsecp256k1 = ["secp256k1"]
 
 [profile.dev]
-opt-level = 1
+# opt-level = 1
 overflow-checks = false
 
 [[bin]]

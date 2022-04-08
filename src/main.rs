@@ -52,6 +52,70 @@ use network::{
 use err::*;
 use json::*;
 
+pub struct ConsensusParams {
+	bip34_height:      usize,
+	cltv_height:       usize,
+	strict_der_height: usize,
+	csv_height:        usize,
+	segwit_height:     usize,
+}
+
+impl Default for ConsensusParams {
+	fn default() -> Self {
+		ConsensusParams {
+			bip34_height:      227931,
+			cltv_height:       388381,
+			strict_der_height: 363725,
+			csv_height:        419328,
+			segwit_height:     481824,
+		}
+	}
+}
+
+pub struct State {
+	params: ConsensusParams,
+	height: usize,
+}
+
+impl Default for State {
+	fn default() -> Self {
+		State {
+			params: Default::default(),
+			height: 0,
+		}
+	}
+}
+
+impl State {
+	fn set_height(&mut self, height: usize) {
+		self.height = height
+	}
+
+	fn height(&self) -> usize {
+		self.height
+	}
+
+	// fn bip34_enabled(&self) -> bool {
+	// 	self.height >= self.params.bip34_height
+	// }
+
+	fn cltv_enabled(&self) -> bool {
+		self.height >= self.params.csv_height
+	}
+
+	fn strict_der_enabled(&self) -> bool {
+		self.height >= self.params.strict_der_height
+	}
+
+	fn csv_enabled(&self) -> bool {
+		self.height >= self.params.csv_height
+	}
+
+	fn segwit_enabled(&self) -> bool {
+		self.height >= self.params.csv_height
+	}
+}
+
 #[derive(Default)]
 struct Config {
 	wxtxid: bool,
@@ -232,6 +296,8 @@ impl Mempool {
 enum ApplicationMessage {
 	ShowMempool,
 	ShowBlockHashes,
+	ShowMempoolCount,
+	ShowBlockCount,
 	ShowHeader(String),
 	ShowBlock(String),
 	ShowTx(String),
@@ -257,6 +323,7 @@ struct Node {
 	utxos: HashMap<UTXOID, TxOutput>,
 	last_save_time: u64,
 	target: u256,
+	state: State,
 }
 
 impl Node {
@@ -326,6 +393,7 @@ impl Node {
 			utxos: Node::load_utxos(),
 			last_save_time: common::now(),
 			target,
+			state: Default::default()
 		}
 	}
 
@@ -544,7 +612,8 @@ impl Node {
 	fn handle_block_message(&mut self, _peer_index: usize, block: Block) -> Result<()> {
 		let height = self.block_db.blocks_validated;
 		let hash = &self.block_db.hashes[height];
-		if let ValidationResult::Valid(diff) = block.validate(hash, &mut self.utxos, height) {
+		self.state.set_height(height);
+		if let ValidationResult::Valid(diff) = block.validate(hash, &mut self.utxos, &self.state) {
 			self.block_db.store_block(block)?;
 			log_trace!("validated block {:010}: {}", self.block_db.blocks_validated, hash);
 
@@ -689,6 +758,14 @@ impl Node {
 						send_cmd.send(ApplicationMessage::ShowBlockHashes).or(Err(Err::ChannelError))?;
 						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
 					},
+					["count", "mempool"] => {
+						send_cmd.send(ApplicationMessage::ShowMempoolCount).or(Err(Err::ChannelError))?;
+						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
+					},
+					["count", "db"] => {
+						send_cmd.send(ApplicationMessage::ShowBlockCount).or(Err(Err::ChannelError))?;
+						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
+					},
 					["header", id] => {
 						send_cmd.send(ApplicationMessage::ShowHeader(id.into())).or(Err(Err::ChannelError))?;
 						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
@@ -752,6 +829,12 @@ impl Node {
 						for (i, hash) in self.block_db.hashes.iter().take(self.block_db.blocks_validated).enumerate() {
 							println!("{:010}: {}", i, hash);
 						}
+					},
+					ApplicationMessage::ShowMempoolCount => {
+						println!("{}", self.mempool.txs.len());
+					},
+					ApplicationMessage::ShowBlockCount => {
+						println!("{}", self.block_db.blocks_validated);
 					},
 					ApplicationMessage::ShowHeader(id) => {
 						Node::show_object(id, |id| self.block_db.headers.get(&id).map(|e| e.clone()));

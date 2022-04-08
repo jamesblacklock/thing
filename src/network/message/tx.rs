@@ -3,6 +3,7 @@ use std::{
 };
 
 use crate::{
+	State,
 	err::*,
 	json::*,
 	crypto::sha256::*,
@@ -39,6 +40,16 @@ pub enum AbsoluteLockTime {
 	None,
 }
 
+impl AbsoluteLockTime {
+	pub fn from_u32(n: u32) -> Self {
+		match n {
+			0 => AbsoluteLockTime::None,
+			x if x < 500000000 => AbsoluteLockTime::BlockNumber(x),
+			x => AbsoluteLockTime::Timestamp(x),
+		}
+	}
+}
+
 impl ToJson for AbsoluteLockTime {
 	fn to_json(&self) -> JsonValue {
 		match *self {
@@ -62,12 +73,7 @@ impl Serialize for AbsoluteLockTime {
 
 impl Deserialize for AbsoluteLockTime {
 	fn deserialize(stream: &mut dyn Read) -> Result<AbsoluteLockTime> {
-		let n = read_u32(stream)?;
-		match n {
-			0 => Ok(AbsoluteLockTime::None),
-			x if x < 500000000 => Ok(AbsoluteLockTime::BlockNumber(x)),
-			x => Ok(AbsoluteLockTime::Timestamp(x)),
-		}
+		Ok(AbsoluteLockTime::from_u32(read_u32(stream)?))
 	}
 }
 
@@ -284,7 +290,7 @@ impl Tx {
 	}
 
 	#[must_use]
-	pub fn validate(&self, utxos: &mut UTXOState, is_coinbase: bool) -> bool {
+	pub fn validate(&self, utxos: &mut UTXOState, is_coinbase: bool, state: &State) -> bool {
 		let txid = compute_double_sha256(&*serialize(self).unwrap());
 		if is_coinbase {
 			if self.inputs.len() != 1 {
@@ -299,7 +305,7 @@ impl Tx {
 			}
 
 			let mut available = 50 * SAT_PER_COIN;
-			for _ in 0..(utxos.block_height()/210_000) {
+			for _ in 0..(state.height()/210_000) {
 				available /= 2;
 			}
 
@@ -326,12 +332,12 @@ impl Tx {
 			let utxo = utxos.remove(id);
 			available += utxo.value;
 			
-			let mut runtime = ScriptRuntime::new(&self, i, &utxo.lock);
+			let mut runtime = ScriptRuntime::new(&self, i, state);
 			let result = runtime.execute(&input.unlock)
 				.and_then(|_| runtime.execute(&utxo.lock))
 				.and_then(|_| runtime.finalize());
 			if result.unwrap_or(StackObject::Empty).is_falsey() {
-				log_info!("scripts failed (block height {})", utxos.block_height());
+				log_info!("scripts failed (block height {})", state.height());
 				return false;
 			}
 
