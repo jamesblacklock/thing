@@ -1,7 +1,7 @@
 #![feature(try_blocks)]
 
 use std::{
-	collections::{HashMap, HashSet},
+	collections::{BTreeMap, HashSet},
 	net::{TcpStream},
 	sync::mpsc,
 	sync::mpsc::{Receiver},
@@ -129,7 +129,7 @@ struct BlocksDB {
 	blocks_requested: usize,
 	blocks_validated: usize,
 	hashes: Vec<Sha256>,
-	headers: HashMap<Sha256, Header>,
+	headers: BTreeMap<Sha256, Header>,
 }
 
 impl BlocksDB {
@@ -140,7 +140,7 @@ impl BlocksDB {
 			blocks_requested: 1,
 			blocks_validated: 1,
 			hashes: vec![genesis_hash],
-			headers: HashMap::from([(genesis_hash, genesis)]),
+			headers: BTreeMap::from([(genesis_hash, genesis)]),
 		}
 	}
 
@@ -167,7 +167,7 @@ impl BlocksDB {
 			};
 
 			let mut hashes = Vec::new();
-			let mut headers = HashMap::new();
+			let mut headers = BTreeMap::new();
 			for hash in BufReader::new(ids_file).lines() {
 				let hash = match hash {
 					Ok(hash) => hash,
@@ -224,7 +224,7 @@ impl BlocksDB {
 		};
 		for hash in self.hashes.iter().take(self.blocks_validated) {
 			let header = self.headers.get(hash)
-				.expect("warning: hashes Vec contains a hash that is missing from headers HashMap (this should never happen)");
+				.expect("warning: hashes Vec contains a hash that is missing from headers BTreeMap (this should never happen)");
 			if let Err(err) = header.serialize(&mut file) {
 				log_error!("warning: failed to save block_db state: {}", err.to_string());
 				return;
@@ -250,8 +250,8 @@ impl BlocksDB {
 		Ok(())
 	}
 
-	fn load_block(&self, hash: Sha256) -> Result<Block> {
-		if hash == GENESIS_BLOCK_HASH.try_into().unwrap() {
+	fn load_block(&self, hash: &Sha256) -> Result<Block> {
+		if *hash == GENESIS_BLOCK_HASH.try_into().unwrap() {
 			return Ok(Block::genesis())
 		}
 		let mut file = std::fs::File::open(format!("./data/block_db/{}.dat", hash))
@@ -266,14 +266,14 @@ impl BlocksDB {
 
 struct Mempool {
 	pending: HashSet<Sha256>,
-	txs: HashMap<Sha256, Tx>,
+	txs: BTreeMap<Sha256, Tx>,
 }
 
 impl Mempool {
 	fn new() -> Self {
 		Mempool {
 			pending: HashSet::new(),
-			txs: HashMap::new(),
+			txs: BTreeMap::new(),
 		}
 	}
 	
@@ -301,7 +301,7 @@ enum ApplicationMessage {
 	ShowHeader(String),
 	ShowBlock(String),
 	ShowTx(String),
-	ShowUTXOs,
+	// ShowUTXOs,
 	Save,
 	Shutdown,
 }
@@ -316,11 +316,11 @@ struct PeerHandle {
 }
 
 struct Node {
-	peers: HashMap<usize, PeerHandle>,
+	peers: BTreeMap<usize, PeerHandle>,
 	recv: Receiver<(usize, Message)>,
 	mempool: Mempool,
 	block_db: BlocksDB,
-	utxos: HashMap<UTXOID, TxOutput>,
+	utxos: BTreeMap<UTXOID, TxOutput>,
 	last_save_time: u64,
 	target: u256,
 	state: State,
@@ -328,7 +328,7 @@ struct Node {
 
 impl Node {
 	pub fn new(addrs: Vec<String>) -> Node {
-		let mut peers = HashMap::new();
+		let mut peers = BTreeMap::new();
 		let (send_to_parent, recv) = mpsc::channel();
 
 		for (i, addr) in addrs.iter().enumerate() {
@@ -381,7 +381,7 @@ impl Node {
 
 		log_debug!("{} peers conntected.", peers.len());
 		
-		let block_db = BlocksDB::load();
+		let block_db = BlocksDB::new();
 		let last_hash = block_db.hashes.last().unwrap();
 		let target = block_db.headers.get(last_hash).unwrap().compute_target();
 
@@ -389,15 +389,15 @@ impl Node {
 			peers,
 			recv,
 			mempool: Mempool::new(),
-			block_db: BlocksDB::load(),
-			utxos: Node::load_utxos(),
+			block_db,
+			utxos: BTreeMap::new(),
 			last_save_time: common::now(),
 			target,
-			state: Default::default()
+			state: Default::default(),
 		}
 	}
 
-	fn load_utxos() -> HashMap<UTXOID, TxOutput> {
+	fn load_utxos() -> BTreeMap<UTXOID, TxOutput> {
 		use std::path::Path;
 
 		const UTXOS_PATH: &str = "./data/utxos.dat";
@@ -407,13 +407,13 @@ impl Node {
 				Ok(file) => file,
 				Err(err) => {
 					log_error!("warning: failed to load utxos.dat: {}", err.to_string());
-					return HashMap::new();
+					return BTreeMap::new();
 				}
 			};
 
 			let result: Result<_> = try {
 				let count = common::read_u64(&mut utxos_file)?;
-				let mut utxos = HashMap::new();
+				let mut utxos = BTreeMap::new();
 				for _ in 0..count {
 					let hash = common::read_sha256(&mut utxos_file)?;
 					let index = common::read_u32(&mut utxos_file)?;
@@ -431,13 +431,13 @@ impl Node {
 					return utxos
 				},
 				Err(err) => {
-					log_error!("warning: failed to save utxo set: {}", err.to_string());
-					return HashMap::new();
+					log_error!("warning: failed to load utxo set: {}", err.to_string());
+					return BTreeMap::new();
 				},
 			}
 		}
 
-		return HashMap::new();
+		return BTreeMap::new();
 	}
 
 	fn save_utxos(&self) {
@@ -591,18 +591,16 @@ impl Node {
 			let m = Message::getheaders(&self.block_db.hashes);
 			peer.writer.send(m)?;
 
-			if self.block_db.blocks_requested < 211_000 {
-				let have = self.block_db.blocks_requested;
-				let need = &self.block_db.hashes[have..have+500];
-				self.block_db.blocks_requested += 500;
-				let need = need.iter()
-					.filter(|e| !self.block_db.has_block(**e))
-					.map(|e| InvItem::new(InvType::Block, e.clone()))
-					.collect::<Vec<_>>();
-				if need.len() > 0 {	
-					let m = Message::getdata(need);
-					peer.writer.send(m)?;
-				}
+			let have = self.block_db.blocks_requested;
+			let need = &self.block_db.hashes[have..have+500];
+			self.block_db.blocks_requested += 500;
+			let need = need.iter()
+				.filter(|e| !self.block_db.has_block(**e))
+				.map(|e| InvItem::new(InvType::Block, e.clone()))
+				.collect::<Vec<_>>();
+			if need.len() > 0 {	
+				let m = Message::getdata(need);
+				peer.writer.send(m)?;
 			}
 		}
 
@@ -780,10 +778,6 @@ impl Node {
 						send_cmd.send(ApplicationMessage::ShowTx(id.into())).or(Err(Err::ChannelError))?;
 						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
 					},
-					["utxos"] => {
-						send_cmd.send(ApplicationMessage::ShowUTXOs).or(Err(Err::ChannelError))?;
-						recv_cmd_done.recv().or(Err(Err::ChannelError))?;
-					},
 					[] => { continue; },
 					_ => {
 						println!("<invalid command>");
@@ -842,26 +836,41 @@ impl Node {
 						Node::show_object(id, |id| self.block_db.headers.get(&id).map(|e| e.clone()));
 					},
 					ApplicationMessage::ShowBlock(id) => {
-						Node::show_object(id, |id| self.block_db.load_block(id).ok());
+						Node::show_object(id, |id| self.block_db.load_block(&id).ok());
 					},
 					ApplicationMessage::ShowTx(id) => {
 						Node::show_object(id, |id| self.mempool.txs.get(&id).map(|e| e.clone()));
 					},
-					ApplicationMessage::ShowUTXOs => {
-						if self.utxos.len() == 0 {
-							println!("<empty>");
-						}
-						for (id, utxo) in self.utxos.iter() {
-							println!("{:?}:\n{}\n", id, utxo.to_json());
-						}
-					},
-
 				}
 				send_cmd_done.send(()).unwrap();
 			}
 			
 			thread::yield_now();
 		}
+	}
+
+	fn load(&mut self, utxos: bool) {
+		self.block_db = BlocksDB::load();
+		let last_hash = self.block_db.hashes.last().unwrap();
+		self.target = self.block_db.headers.get(last_hash).unwrap().compute_target();
+		if utxos {
+			self.utxos = Node::load_utxos();
+		}
+	}
+
+	pub fn rebuild_utxo_set(mut self) -> Result<()> {
+		self.load(false);
+		for (i, hash) in self.block_db.hashes.iter().enumerate() {
+			let block = self.block_db.load_block(hash).unwrap();
+			self.state.set_height(i);
+			let diff = block.build_utxo_diff(&mut self.utxos);
+			diff.apply(&mut self.utxos);
+			log_info!("validated block {:010}: {}", i, hash);
+		}
+
+		self.save_state();
+		log_info!("saved state.");
+		Ok(())
 	}
 	
 	pub fn run(mut self) -> Result<()> {
@@ -870,6 +879,8 @@ impl Node {
 				log_error!("peer {}: error: {}", i, e);
 			}
 		}
+
+		self.load(true);
 		
 		let (send_cmd, recv_cmd) = mpsc::channel();
 		let (send_cmd_done, recv_cmd_done) = mpsc::channel();
@@ -888,6 +899,11 @@ impl Node {
 
 fn main() -> Result<()> {
 	let addrs = std::env::args().skip(1).collect();
-	let node = Node::new(addrs);
-	node.run()
+	if addrs == vec!["--rebuild-utxos"] {
+		let node = Node::new(vec![]);
+		node.rebuild_utxo_set()
+	} else {
+		let node = Node::new(addrs);
+		node.run()
+	}
 }

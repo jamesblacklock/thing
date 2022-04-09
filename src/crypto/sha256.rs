@@ -3,7 +3,7 @@ use std::fmt;
 use crate::err::*;
 use crate::common::hex_to_bytes_le;
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Sha256 {
 	digest: [u32; 8]
 }

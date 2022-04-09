@@ -356,6 +356,19 @@ impl Tx {
 		true
 	}
 
+	pub fn build_utxo_diff(&self, utxos: &mut UTXOState, is_coinbase: bool) {
+		let txid = compute_double_sha256(&*serialize(self).unwrap());
+		if !is_coinbase {
+			for input in self.inputs.iter() {
+				let id = input.utxo_id();
+				let _ = utxos.remove(id);
+			}
+		}
+		for (i, output) in self.outputs.iter().cloned().enumerate() {
+			utxos.add(UTXOID(txid, i as u32), output);
+		}
+	}
+
 	pub fn compute_hash(&self) -> Sha256 {
 		compute_double_sha256(&*serialize(self).unwrap())
 	}

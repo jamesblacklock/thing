@@ -4,6 +4,7 @@ use std::{
 		Write,
 	},
 	collections::HashMap,
+	collections::BTreeMap,
 	collections::HashSet,
 };
 
@@ -27,11 +28,11 @@ use super::{
 	TxOutput,
 };
 
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone, PartialOrd, Ord)]
 pub struct UTXOID(pub Sha256, pub u32);
 
 pub struct UTXOState<'a> {
-	base: &'a HashMap<UTXOID, TxOutput>,
+	base: &'a BTreeMap<UTXOID, TxOutput>,
 	added: HashMap<UTXOID, TxOutput>,
 	removed: HashSet<UTXOID>,
 	pub tx_fee: u64,
@@ -49,7 +50,7 @@ pub enum ValidationResult {
 }
 
 impl <'a> UTXOState<'a> {
-	pub fn new(utxos: &'a HashMap<UTXOID, TxOutput>) -> Self {
+	pub fn new(utxos: &'a BTreeMap<UTXOID, TxOutput>) -> Self {
 		UTXOState {
 			base: utxos,
 			added: HashMap::new(),
@@ -87,7 +88,7 @@ impl <'a> UTXOState<'a> {
 }
 
 impl UTXODiff {
-	pub fn apply(self, utxos: &mut HashMap<UTXOID, TxOutput>) {
+	pub fn apply(self, utxos: &mut BTreeMap<UTXOID, TxOutput>) {
 		for k in self.removed {
 			// println!("removed UTXO: {:?}", k);
 			utxos.remove(&k).unwrap();
@@ -155,7 +156,7 @@ impl Block {
 	}
 
 	#[must_use]
-	pub fn validate(&self, hash: &Sha256, utxos: &mut HashMap<UTXOID, TxOutput>, state: &State) -> ValidationResult {
+	pub fn validate(&self, hash: &Sha256, utxos: &mut BTreeMap<UTXOID, TxOutput>, state: &State) -> ValidationResult {
 		if *hash != self.header.compute_hash() {
 			return ValidationResult::Invalid;
 		}
@@ -181,6 +182,15 @@ impl Block {
 
 		log_trace!("  validated coinbase tx");
 		ValidationResult::Valid(utxos.diff())
+	}
+
+	pub fn build_utxo_diff(&self, utxos: &mut BTreeMap<UTXOID, TxOutput>) -> UTXODiff {
+		let mut utxos = UTXOState::new(utxos);
+		self.txs[0].build_utxo_diff(&mut utxos, true);
+		for tx in self.txs.iter().skip(1) {
+			tx.build_utxo_diff(&mut utxos, false);
+		}
+		utxos.diff()
 	}
 }
 

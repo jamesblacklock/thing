@@ -1203,9 +1203,6 @@ impl <'a> Op<'a> {
 				output.value = -1i64 as u64;
 				output.lock = Script::new();
 			}
-			log_warn!(
-				"encountered SIGHASH_SINGLE; this is untested! (block {}, input {})",
-				runtime.state.height(), runtime.index);
 		}
 
 		if sighash_anyonecanpay {
