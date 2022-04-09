@@ -1,7 +1,7 @@
 #![feature(try_blocks)]
 
 use std::{
-	collections::{BTreeMap, HashSet},
+	collections::{BTreeMap, HashMap, HashSet},
 	net::{TcpStream},
 	sync::mpsc,
 	sync::mpsc::{Receiver},
@@ -315,8 +315,8 @@ struct PeerHandle {
 }
 
 struct Node {
-	peers: BTreeMap<usize, PeerHandle>,
-	recv: Receiver<(usize, Message)>,
+	peers: HashMap<usize, PeerHandle>,
+	recv: Option<Receiver<(usize, Message)>>,
 	mempool: Mempool,
 	block_db: BlocksDB,
 	utxos: BTreeMap<UTXOID, TxOutput>,
@@ -326,70 +326,25 @@ struct Node {
 }
 
 impl Node {
-	pub fn new(addrs: Vec<String>) -> Node {
-		let mut peers = BTreeMap::new();
-		let (send_to_parent, recv) = mpsc::channel();
-
-		for (i, addr) in addrs.iter().enumerate() {
-			log_info!("trying to connect to: {}", addr);
-			let writer = match TcpStream::connect(addr.clone()) {
-				Ok(stream) => stream,
-				Err(e) => {
-					log_error!("failed to connect to peer: {}: {}", addr, e.to_string());
-					continue;
-				}
-			};
-
-			let mut reader = writer.try_clone().unwrap();
-			let send_to_parent = send_to_parent.clone();
-			
-			thread::spawn(move || {
-				loop {
-					match reader.receive() {
-						Ok(Some(message)) => {
-							if let Err(_) = send_to_parent.send((i, message)) {
-								break;
-							}
-						},
-						Ok(None) => {
-							break;
-						},
-						Err(err) => {
-							log_error!("error: {}", err.to_string());
-							break;
-						},
-					}
-				}
-			});
-			
-			peers.insert(i, PeerHandle {
-				writer,
-				// handle,
-				addr: addr.clone(),
-				info: None,
-				handshake_complete: false,
-				config: Config::default(),
-			});
-
-			log_info!("Connected to: {}", addr);
-		}
-
-		if peers.len() == 0 {
-			log_warn!("No peers connected!");
-		}
-
-		log_debug!("{} peers conntected.", peers.len());
-		
-		let block_db = BlocksDB::new();
+	pub fn new(load_utxos: bool) -> Node {
+		log_info!("loading headers...");
+		let block_db = BlocksDB::load();
 		let last_hash = block_db.hashes.last().unwrap();
 		let target = block_db.headers.get(last_hash).unwrap().compute_target();
 
+		let utxos = if load_utxos {
+			log_info!("loading UTXOs...");
+			Node::load_utxos()
+		} else {
+			BTreeMap::new()
+		};
+
 		Node {
-			peers,
-			recv,
+			peers: HashMap::new(),
+			recv: None,
 			mempool: Mempool::new(),
 			block_db,
-			utxos: BTreeMap::new(),
+			utxos,
 			last_save_time: common::now(),
 			target,
 			state: Default::default(),
@@ -794,7 +749,7 @@ impl Node {
 
 	fn message_thread(&mut self, recv_cmd: mpsc::Receiver<ApplicationMessage>, send_cmd_done: mpsc::Sender<()>) {
 		loop {
-			if let Ok((i, m)) = self.recv.try_recv() {
+			if let Ok((i, m)) = self.recv.as_ref().unwrap().try_recv() {
 				if let Err(e) = self.handle_message(i, m) {
 					log_error!("{}", e);
 				}
@@ -848,17 +803,8 @@ impl Node {
 		}
 	}
 
-	fn load(&mut self, utxos: bool) {
-		self.block_db = BlocksDB::load();
-		let last_hash = self.block_db.hashes.last().unwrap();
-		self.target = self.block_db.headers.get(last_hash).unwrap().compute_target();
-		if utxos {
-			self.utxos = Node::load_utxos();
-		}
-	}
-
 	pub fn rebuild_utxo_set(mut self) -> Result<()> {
-		self.load(false);
+		self.utxos = BTreeMap::new();
 		for (i, hash) in self.block_db.hashes.iter().enumerate() {
 			let block = self.block_db.load_block(hash).unwrap();
 			self.state.set_height(i);
@@ -872,14 +818,65 @@ impl Node {
 		Ok(())
 	}
 	
-	pub fn run(mut self) -> Result<()> {
+	pub fn run(mut self, addrs: Vec<String>) -> Result<()> {
+		let (send_to_parent, recv) = mpsc::channel();
+		self.recv = Some(recv);
+		self.peers = HashMap::new();
+
+		for (i, addr) in addrs.iter().enumerate() {
+			log_info!("trying to connect to: {}", addr);
+			let writer = match TcpStream::connect(addr.clone()) {
+				Ok(stream) => stream,
+				Err(e) => {
+					log_error!("failed to connect to peer: {}: {}", addr, e.to_string());
+					continue;
+				}
+			};
+
+			let mut reader = writer.try_clone().unwrap();
+			let send_to_parent = send_to_parent.clone();
+			
+			thread::spawn(move || {
+				loop {
+					match reader.receive() {
+						Ok(Some(message)) => {
+							if let Err(_) = send_to_parent.send((i, message)) {
+								break;
+							}
+						},
+						Ok(None) => {
+							break;
+						},
+						Err(err) => {
+							log_error!("error: {}", err.to_string());
+							break;
+						},
+					}
+				}
+			});
+			
+			self.peers.insert(i, PeerHandle {
+				writer,
+				addr: addr.clone(),
+				info: None,
+				handshake_complete: false,
+				config: Config::default(),
+			});
+
+			log_info!("Connected to: {}", addr);
+		}
+
+		if self.peers.len() == 0 {
+			log_warn!("No peers connected!");
+		}
+
+		log_debug!("{} peers conntected.", self.peers.len());
+
 		for (i, peer) in self.peers.iter_mut() {
 			if let Err(e) = peer.writer.send(Message::version(peer.addr.clone())) {
 				log_error!("peer {}: error: {}", i, e);
 			}
 		}
-
-		self.load(true);
 		
 		let (send_cmd, recv_cmd) = mpsc::channel();
 		let (send_cmd_done, recv_cmd_done) = mpsc::channel();
@@ -899,10 +896,10 @@ impl Node {
 fn main() -> Result<()> {
 	let addrs = std::env::args().skip(1).collect();
 	if addrs == vec!["--rebuild-utxos"] {
-		let node = Node::new(vec![]);
+		let node = Node::new(false);
 		node.rebuild_utxo_set()
 	} else {
-		let node = Node::new(addrs);
-		node.run()
+		let node = Node::new(true);
+		node.run(addrs)
 	}
 }
