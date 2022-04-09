@@ -301,7 +301,6 @@ enum ApplicationMessage {
 	ShowHeader(String),
 	ShowBlock(String),
 	ShowTx(String),
-	// ShowUTXOs,
 	Save,
 	Shutdown,
 }
